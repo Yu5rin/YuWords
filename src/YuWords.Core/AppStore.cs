@@ -314,6 +314,9 @@ public sealed class AppStore
         TryWriteBackup();
     }
 
+    /// <summary>持ち出し用辞書を今の登録済みの語で書き直す（引っ越しのあとなど）</summary>
+    public void RefreshBackup() => TryWriteBackup();
+
     /// <summary>
     /// 持ち出し用辞書を書く。書けなくても（保存先が無い・書き込めない）登録自体は済んでいるので、例外にせず BackupError に残す
     /// </summary>

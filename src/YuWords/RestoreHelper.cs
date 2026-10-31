@@ -11,10 +11,17 @@ static class RestoreHelper
         using var dlg = new OpenFileDialog
         {
             Title = "IME に登録するファイル（前の PC の dictionary_backup.txt など）",
-            Filter = "辞書のテキスト・CSV（Microsoft IME・Google 日本語入力・ATOK）(*.txt;*.csv)|*.txt;*.csv|すべてのファイル (*.*)|*.*",
+            Filter = "辞書のテキスト・CSV・引っ越しファイル (*.txt;*.csv;*.zip)|*.txt;*.csv;*.zip|すべてのファイル (*.*)|*.*",
             FileName = initialPath != null && File.Exists(initialPath) ? initialPath : "",
         };
         if (dlg.ShowDialog(owner) != DialogResult.OK) return false;
+        if (Migration.IsMigrationFile(dlg.FileName))
+        {
+            // 引っ越しファイル（設定ごと）なら、引っ越しとして読み込む
+            if (owner is MainForm main) main.ImportMigration(dlg.FileName);
+            else MessageBox.Show(owner, "これは引っ越しファイルです。設定画面を閉じて、「使い方」→「前の PC から引っ越す...」で選んでください。", "YuWords");
+            return false;
+        }
         List<(string Reading, string Word, string Pos)> words;
         try { words = DictionaryFormats.Read(dlg.FileName); }
         catch (Exception ex)
@@ -65,8 +72,8 @@ static class RestoreHelper
         store.SaveSettings();
         var ans = MessageBox.Show(owner,
             "YuWords へようこそ。\n\n" +
-            "前の PC で YuWords を使っていて、持ち出し用辞書（dictionary_backup.txt）がありますか？\n\n" +
-            "［はい］そのファイルを選んで、IME にまとめて登録します。\n" +
+            "前の PC で YuWords を使っていて、引っ越しファイル（YuWords_引っ越し_….zip）か持ち出し用辞書（dictionary_backup.txt）がありますか？\n\n" +
+            "［はい］そのファイルを選びます。引っ越しファイルなら設定ごと、持ち出し用辞書なら登録した語を IME にまとめて登録します。\n" +
             "［いいえ］「Outlook から読み込む」などで、自分の文章から語を集めるところから始めます。",
             "YuWords", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
         if (ans == DialogResult.Yes) await FromFileAsync(owner, store);

@@ -86,6 +86,7 @@ sealed partial class MainForm : Form
         RestoreSession();
         CheckForUpdatesOnStartup();
         CheckTeamDictionaryOnStartup();
+        OfferImeRestoreAfterMigration();
         if (!store.Settings.Welcomed && store.Registered.Count == 0 && all.Count == 0)
             Shown += async (_, _) => await RestoreHelper.Welcome(this, store);
         UpdateCounts();
@@ -211,6 +212,10 @@ sealed partial class MainForm : Form
             rollback.Enabled = previous != null;
             rollback.Text = previous != null ? $"前の版（v{previous}）に戻す..." : "前の版に戻す（控えなし）";
         };
+        btnHelp.DropDownItems.Add(new ToolStripSeparator());
+        btnHelp.DropDownItems.Add("新しい PC へ引っ越す（まとめて書き出す）...", null, (_, _) => ExportMigration());
+        btnHelp.DropDownItems.Add("前の PC から引っ越す...", null, (_, _) => ImportMigration());
+        btnHelp.DropDownItems.Add(new ToolStripSeparator());
         btnHelp.DropDownItems.Add("ログのフォルダを開く", null, (_, _) =>
         {
             if (Log.Directory != null) Process.Start("explorer.exe", $"\"{Log.Directory}\"");
@@ -560,8 +565,11 @@ sealed partial class MainForm : Form
         // 一覧と選択は途中保存されるので、次回起動したときに続きから再開できる
         cts?.Cancel();
         saveTimer.Stop();
-        SaveLayout();
-        SaveSession();
+        if (!restartingAfterImport)   // 引っ越しで読み込んだ設定を、今の設定で上書きしない
+        {
+            SaveLayout();
+            SaveSession();
+        }
         uiIme?.Dispose();
         base.OnFormClosing(e);
     }
