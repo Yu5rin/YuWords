@@ -18,6 +18,8 @@ public sealed class Candidate
     public bool ImeConvertible => ImeConversion == Word;
     /// <summary>その語を含む本文の1行（よみ判断の手がかり）</summary>
     public string Example { get; init; } = "";
+    /// <summary>語の意味・メモ（用語集の「意味」の列、チームの辞書の「意味」）。登録したときに残す</summary>
+    public string Meaning { get; init; } = "";
     /// <summary>その語を含む本文の行（違うものを最大 5 行）</summary>
     public List<string> Examples { get; init; } = [];
     /// <summary>よみの出どころ。空なら形態素解析の推測、「連絡先」なら Outlook の連絡先のふりがな</summary>

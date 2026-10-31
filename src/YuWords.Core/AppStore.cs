@@ -253,6 +253,7 @@ public sealed class AppStore
         TeamSeen = (Load<List<string>>(TeamSeenPath) ?? []).ToHashSet();
         LastUsed = Load<Dictionary<string, DateTime>>(LastUsedPath) ?? [];
         RecentUse = Load<RecentUse>(RecentUsePath) ?? new();
+        Notes = Load<Dictionary<string, string>>(NotesPath) ?? [];
     }
 
     static T? Load<T>(string path) where T : class
@@ -391,6 +392,34 @@ public sealed class AppStore
     }
 
     string RecentUsePath => Path.Combine(Dir, "recent_use.json");
+    string NotesPath => Path.Combine(Dir, "notes.json");
+
+    /// <summary>語の意味・メモ（語句 → メモ）。「この略語なんだっけ」を引くための小さな用語集</summary>
+    public Dictionary<string, string> Notes { get; private set; } = [];
+
+    /// <summary>メモを書く（空なら消す）</summary>
+    public void SetNote(string word, string note)
+    {
+        note = note.Trim();
+        if (note.Length == 0) Notes.Remove(word);
+        else Notes[word] = note;
+        Save(NotesPath, Notes);
+    }
+
+    /// <summary>まだメモの無い語にだけメモを足す（登録したときに、用語集の意味を残す）。戻り値は足した数</summary>
+    public int AddNotes(IEnumerable<(string Word, string Note)> notes)
+    {
+        int n = 0;
+        foreach (var (w, note) in notes)
+        {
+            var t = note.Trim();
+            if (t.Length == 0 || Notes.ContainsKey(w)) continue;
+            Notes[w] = t;
+            n++;
+        }
+        if (n > 0) Save(NotesPath, Notes);
+        return n;
+    }
 
     /// <summary>前回読み込んだ送信メールで、登録済みの語が出たメールの数（語句 → 通数）と、読み込んだ通数</summary>
     public RecentUse RecentUse { get; private set; } = new();

@@ -169,7 +169,7 @@ sealed partial class MainForm
         if (pick.Glossary)
         {
             // 用語集: 1行に1語なので出現数で絞らず、語句とよみの組をそのまま候補にする
-            var words = pick.Entries().Select(e => new DictWord(e.Reading, e.Word, "名詞", e.Note, e.Adjusted, e.Extra)).ToList();
+            var words = pick.Entries().Select(e => new DictWord(e.Reading, e.Word, "名詞", "", e.Adjusted, e.Extra, Meaning: e.Note)).ToList();
             await AddWordsAsync(Path.GetFileName(dlg.FileName), words, "用語集");
             return;
         }
@@ -290,7 +290,9 @@ sealed partial class MainForm
     /// よみの無い語は IME のよみを推測として使い、要確認にする。IME への問い合わせは裏で並べて行う
     /// </summary>
     /// <summary>辞書・用語集の1語（意味は例文の欄に出す。Adjusted は語句を自動で直したので要確認にする）</summary>
-    sealed record DictWord(string Reading, string Word, string Pos, string Note = "", bool Adjusted = false, string Extra = "");
+    /// <param name="Note">例文の欄に出す補足（「○○さんが追加」など）</param>
+    /// <param name="Meaning">語の意味（用語集・チームの辞書）。例文の欄に出し、登録したときにメモとして残す</param>
+    sealed record DictWord(string Reading, string Word, string Pos, string Note = "", bool Adjusted = false, string Extra = "", string Meaning = "");
 
     // ===== チームの辞書 =====
 
@@ -341,7 +343,7 @@ sealed partial class MainForm
         if (ans == DialogResult.Yes)
         {
             await AddWordsAsync("チームの辞書", fresh.Select(w => new DictWord(w.Reading, w.Word, w.Pos,
-                w.AddedBy.Length > 0 ? $"{w.AddedBy} さんが {w.AddedAt} に追加" : "")).ToList(), "チーム辞書");
+                w.AddedBy.Length > 0 ? $"{w.AddedBy} さんが {w.AddedAt} に追加" : "", Meaning: w.Note)).ToList(), "チーム辞書");
             // 一覧に入った語だけを知らせ済みにする（ほかの読み込み中・中止で入らなかった語は、次にまた知らせる）
             var nowInList = all.Select(i => i.Source.Word).ToHashSet();
             fresh = fresh.Where(w => nowInList.Contains(w.Word)).ToList();
@@ -350,7 +352,7 @@ sealed partial class MainForm
     }
 
     /// <summary>選んだ行（よみのある語）をチームの辞書に足す</summary>
-    async Task AddToTeamAsync(IEnumerable<(string Word, string Reading, string Pos)> words)
+    async Task AddToTeamAsync(IEnumerable<(string Word, string Reading, string Pos, string Note)> words)
     {
         var path = store.Settings.TeamDictionaryPath;
         if (path.Length == 0)
@@ -391,8 +393,9 @@ sealed partial class MainForm
             {
                 Word = w.Word, Reading = w.Reading, Category = category, Unsure = w.Reading.Length == 0 || w.Adjusted,
                 ReadingSource = w.Reading.Length > 0 ? category : "",
-                Example = w.Note.Length > 0 ? w.Note : from,
-                Examples = w.Note.Length > 0 ? [w.Note, from] : [from],
+                Example = new[] { w.Meaning, w.Note, from }.First(x => x.Length > 0),
+                Examples = new[] { w.Meaning, w.Note, from }.Where(x => x.Length > 0).ToList(),
+                Meaning = w.Meaning,
                 ExtraReadings = w.Extra.Length > 0 ? [w.Extra] : [],
             });
         }

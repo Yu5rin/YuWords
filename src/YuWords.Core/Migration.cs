@@ -13,7 +13,7 @@ public static class Migration
 {
     /// <summary>引っ越しに入れるファイル（%APPDATA%\YuWords の中の名前）</summary>
     public static readonly string[] Files =
-        ["settings.json", "excluded.json", "registered.json", "held.json", "learned.json", "last_used.json", "team_seen.json"];
+        ["settings.json", "excluded.json", "registered.json", "held.json", "learned.json", "last_used.json", "team_seen.json", "notes.json"];
 
     /// <summary>YuWords の引っ越しファイルであることの印（版と作った日時を書く）</summary>
     const string Marker = "yuwords_migration.txt";

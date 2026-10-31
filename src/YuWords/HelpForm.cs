@@ -38,6 +38,7 @@ sealed class HelpForm : Form
         Ctrl+Z       元に戻す
         Ctrl+N       語を手で追加（クリップボードの語が入ります）
         Ctrl+F       検索欄へ
+        Ctrl+K       用語を引く（登録した語とメモ、チームの辞書から探す）
         F1           この画面
 
         ■ 右クリック

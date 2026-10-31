@@ -76,9 +76,9 @@ public static class OutputWriters
     }
 
     /// <summary>登録済みの語を CSV（語句・よみ・品詞・登録日）に書く</summary>
-    public static void WriteRegisteredCsv(string path, IEnumerable<RegisteredWord> words) =>
-        WriteCsv(path, ["語句", "よみ", "品詞", "登録日"],
-            words.Select(w => new[] { w.Word, w.Reading, w.Pos, w.RegisteredAt.ToString("yyyy/MM/dd HH:mm") }));
+    public static void WriteRegisteredCsv(string path, IEnumerable<RegisteredWord> words, IReadOnlyDictionary<string, string>? notes = null) =>
+        WriteCsv(path, ["語句", "よみ", "品詞", "登録日", "意味・メモ"],
+            words.Select(w => new[] { w.Word, w.Reading, w.Pos, w.RegisteredAt.ToString("yyyy/MM/dd HH:mm"), notes?.GetValueOrDefault(w.Word) ?? "" }));
 
     /// <summary>
     /// 語の一覧を CSV から読む。見出し行に「語句」「よみ」「品詞」があればその列を、無ければ 1〜3 列目を使う。

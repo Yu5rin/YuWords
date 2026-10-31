@@ -351,7 +351,7 @@ sealed class SettingsForm : Form
         try
         {
             var path = OutputWriters.WritablePath(dlg.FileName, m => MessageBox.Show(this, m, "登録済みの語"));
-            OutputWriters.WriteRegisteredCsv(path, store.Registered);
+            OutputWriters.WriteRegisteredCsv(path, store.Registered, store.Notes);
             MessageBox.Show(this, $"{store.Registered.Count} 語を書き出しました。\n{path}", "登録済みの語");
         }
         catch (Exception ex)
@@ -400,7 +400,7 @@ sealed class SettingsForm : Form
         Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false,
     };
     readonly Label lblRegistered = Note("");
-    readonly TextBox txtRegSearch = new() { Width = Dpi.Scale(160), PlaceholderText = "語句・よみで探す" };
+    readonly TextBox txtRegSearch = new() { Width = Dpi.Scale(160), PlaceholderText = "語句・よみ・メモで探す" };
     readonly CheckBox chkStale = new() { Text = "使わなくなったかもしれない語だけ", AutoSize = true, Margin = new Padding(10, 5, 3, 3) };
     readonly NumericUpDown numStaleDays = new() { Minimum = 30, Maximum = 3650, Increment = 30, Width = Dpi.Scale(70) };
 
@@ -412,10 +412,11 @@ sealed class SettingsForm : Form
         lstRegistered.Columns.Add("登録日", 85);
         lstRegistered.Columns.Add("最後に見た日", 95);
         lstRegistered.Columns.Add("登録先", 90);
+        lstRegistered.Columns.Add("意味・メモ", 200);
         numStaleDays.Value = Math.Clamp(store.Settings.StaleDays, (int)numStaleDays.Minimum, (int)numStaleDays.Maximum);
         ReloadRegistered();
 
-        var edit = new Button { Text = "よみ・品詞を直す...", AutoSize = true };
+        var edit = new Button { Text = "よみ・品詞・メモを直す...", AutoSize = true };
         var del = new Button { Text = "IME から削除して一覧から外す", AutoSize = true };
         var forget = new Button { Text = "一覧から外すだけ", AutoSize = true };
         var import = new Button { Text = "IME のユーザー辞書から取り込む", AutoSize = true };
@@ -469,7 +470,8 @@ sealed class SettingsForm : Form
             ? WordUsage.Stale(store.Registered, store.LastUsed, store.Settings.LastUsageScan, (int)numStaleDays.Value)
             : store.Registered;
         if (q.Length > 0)
-            rows = rows.Where(r => r.Word.Contains(q, StringComparison.OrdinalIgnoreCase) || r.Reading.Contains(qHira, StringComparison.Ordinal));
+            rows = rows.Where(r => r.Word.Contains(q, StringComparison.OrdinalIgnoreCase) || r.Reading.Contains(qHira, StringComparison.Ordinal)
+                                   || (store.Notes.TryGetValue(r.Word, out var n) && n.Contains(q, StringComparison.OrdinalIgnoreCase)));
         var list = rows.OrderByDescending(r => r.RegisteredAt).ToList();
         lstRegistered.BeginUpdate();
         lstRegistered.Items.Clear();
@@ -477,7 +479,7 @@ sealed class SettingsForm : Form
         {
             var seen = store.LastUsed.TryGetValue(r.Word, out var t) ? t.ToString("yyyy/MM/dd") : "";
             lstRegistered.Items.Add(new ListViewItem([r.Word, r.Reading, r.Pos, r.RegisteredAt.ToString("yyyy/MM/dd"), seen,
-                r.Target == GoogleIme.Target ? "Google" : "Microsoft IME"]) { Tag = r });
+                r.Target == GoogleIme.Target ? "Google" : "Microsoft IME", store.Notes.GetValueOrDefault(r.Word) ?? ""]) { Tag = r });
         }
         lstRegistered.EndUpdate();
         var shown = list.Count == store.Registered.Count ? "" : $"（表示 {list.Count} 語）";
@@ -500,8 +502,15 @@ sealed class SettingsForm : Form
         }
         var old = sel[0];
         using var ime = new ImeConverter();
-        using var f = new AddWordForm(old.Word, w => w.Length == 0 ? "" : ime.Phonetic(w), r => ime.Convert(r), (old.Reading, old.Pos));
-        if (f.ShowDialog(this) != DialogResult.OK || (f.Reading == old.Reading && f.Pos == old.Pos)) return;
+        var oldNote = store.Notes.GetValueOrDefault(old.Word) ?? "";
+        using var f = new AddWordForm(old.Word, w => w.Length == 0 ? "" : ime.Phonetic(w), r => ime.Convert(r), (old.Reading, old.Pos), oldNote);
+        if (f.ShowDialog(this) != DialogResult.OK) return;
+        if (f.Note != oldNote) store.SetNote(old.Word, f.Note);   // メモは IME に関係なく、すぐ残す
+        if (f.Reading == old.Reading && f.Pos == old.Pos)
+        {
+            ReloadRegistered();
+            return;
+        }
         var (reading, pos) = (f.Reading, f.Pos);
         try
         {

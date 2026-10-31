@@ -108,6 +108,7 @@ sealed partial class MainForm : Form
         if (e.KeyCode == Keys.F1) { ShowHelp(); e.Handled = true; }
         else if (e.KeyCode == Keys.N && e.Control) { AddWord(); e.Handled = true; }
         else if (e.KeyCode == Keys.F && e.Control) { txtSearch.Focus(); txtSearch.SelectAll(); e.Handled = true; }
+        else if (e.KeyCode == Keys.K && e.Control) { ShowLookup(); e.Handled = true; }
     }
 
     /// <summary>辞書・Outlook・IME が使えるかをまとめて確かめる（IME の COM を使うので STA スレッドで）</summary>
@@ -126,6 +127,12 @@ sealed partial class MainForm : Form
             f.ShowDialog(this);
         }
         finally { UseWaitCursor = false; }
+    }
+
+    void ShowLookup()
+    {
+        using var f = new LookupForm(store);
+        f.ShowDialog(this);
     }
 
     void ShowHelp()
@@ -212,6 +219,7 @@ sealed partial class MainForm : Form
         btnAddWord.Click += (_, _) => AddWord();
         btnHelp.Alignment = ToolStripItemAlignment.Right;
         btnHelp.DropDownItems.Add("使い方とキー操作（F1）", null, (_, _) => ShowHelp());
+        btnHelp.DropDownItems.Add("用語を引く（Ctrl+K）...", null, (_, _) => ShowLookup());
         btnHelp.DropDownItems.Add("これまでの効果...", null, (_, _) =>
         {
             using var f = new StatsForm(UsageStats.Compute(store, DateTime.Now));
@@ -415,7 +423,8 @@ sealed partial class MainForm : Form
         menu.Items.Add("IME のよみを採用", null, (_, _) => AdoptImeReading(SelectedItems()));
         menu.Items.Add("短いよみを付ける", null, (_, _) => AddShortReadings());
         menu.Items.Add("このよみをルールにする", null, (_, _) => MakeRules());
-        menu.Items.Add("チームの辞書に足す", null, async (_, _) => await AddToTeamAsync(SelectedItems().SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos))));
+        menu.Items.Add("チームの辞書に足す", null, async (_, _) => await AddToTeamAsync(SelectedItems().SelectMany(i =>
+            i.Entries().Select(e => (e.Word, e.Reading, e.Pos, i.Source.Meaning.Length > 0 ? i.Source.Meaning : store.Notes.GetValueOrDefault(i.Word) ?? "")))));
         var posMenu = new ToolStripMenuItem("品詞を設定");
         foreach (var p in ReviewItem.PosChoices) posMenu.DropDownItems.Add(p, null, (_, _) => SetPos(p));
         menu.Items.Add(posMenu);

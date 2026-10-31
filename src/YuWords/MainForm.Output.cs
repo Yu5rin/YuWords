@@ -8,6 +8,9 @@ sealed partial class MainForm
 {
     // ===== IME への登録 =====
 
+    /// <summary>登録した語に、用語集・チームの辞書の意味をメモとして残す（自分で書いたメモは上書きしない）</summary>
+    void SaveMeanings(IEnumerable<ReviewItem> items) => store.AddNotes(items.Select(i => (i.Word, i.Source.Meaning)));
+
     /// <summary>IME で変換できなかった語（変換結果が分かっていて、表記と違う。定型文は除く）</summary>
     static HashSet<string> Rescued(IEnumerable<ReviewItem> items) =>
         items.Where(i => i.Category != CandidateBuilder.PhraseCategory && i.ImeConversion.Length > 0 && !i.ImeConvertible)
@@ -38,6 +41,7 @@ sealed partial class MainForm
             Log.Info($"IME に登録: 登録 {report.Registered}、既存 {report.Skipped}、失敗 {report.Failed.Count}");
             var ok = report.Succeeded.ToHashSet();
             store.MarkRescued(report.Succeeded.Select(w => w.Word).Where(rescued.Contains));
+            SaveMeanings(items.Where(i => ok.Contains((i.Reading, i.Word, i.Pos))));
             // 登録した語が、そのよみで変換できるようになったかを確かめ直す
             int converts = 0, checkedCount = 0;
             foreach (var i in items.Where(i => ok.Contains((i.Reading, i.Word, i.Pos))))
@@ -127,6 +131,7 @@ sealed partial class MainForm
             var (path, n) = GoogleIme.Export(store.Dir, items.SelectMany(i => i.Entries()));
             store.AddRegistered(items.SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos)), GoogleIme.Target);
             store.MarkRescued(Rescued(items));
+            SaveMeanings(items);
             try { Clipboard.SetText(path); } catch (Exception) { }
             Log.Info($"Google 日本語入力用に {n} 語を書き出し");
             var error = GoogleIme.OpenDictionaryTool();
@@ -205,6 +210,7 @@ sealed partial class MainForm
             }
             int added = store.AddRegistered(items.SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos)));
             store.MarkRescued(Rescued(items));
+            SaveMeanings(items);
             foreach (var i in items) (i.IsRegistered, i.Register, i.Held) = (true, false, false);
             grid.Invalidate();
             ScheduleSave();

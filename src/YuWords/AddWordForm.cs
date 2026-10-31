@@ -8,6 +8,7 @@ sealed class AddWordForm : Form
     readonly TextBox txtWord = new() { Width = Dpi.Scale(320) };
     readonly TextBox txtReading = new() { Width = Dpi.Scale(320) };
     readonly ComboBox cmbPos = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = Dpi.Scale(140) };
+    readonly TextBox txtNote = new() { Width = Dpi.Scale(320), Height = Dpi.Scale(60), Multiline = true, ScrollBars = ScrollBars.Vertical };
     readonly Label lblConv = new() { AutoSize = true, ForeColor = SystemColors.GrayText };
     readonly Func<string, string> phonetic;
     readonly Func<string, string> convert;
@@ -16,13 +17,16 @@ sealed class AddWordForm : Form
     public string Word => txtWord.Text.Trim();
     public string Reading => TermExtractor.KataToHira(txtReading.Text.Trim());
     public string Pos => (string)cmbPos.SelectedItem!;
+    /// <summary>意味・メモ（直すときだけ出す）</summary>
+    public string Note => txtNote.Text.Trim();
 
     /// <param name="edit">登録済みの語のよみ・品詞を直すときのよみと品詞（語句は変えられない）</param>
-    public AddWordForm(string initialWord, Func<string, string> phonetic, Func<string, string> convert, (string Reading, string Pos)? edit = null)
+    /// <param name="note">直すときの意味・メモ</param>
+    public AddWordForm(string initialWord, Func<string, string> phonetic, Func<string, string> convert, (string Reading, string Pos)? edit = null, string note = "")
     {
         this.phonetic = phonetic;
         this.convert = convert;
-        Text = edit == null ? "語を追加" : "よみ・品詞を直す";
+        Text = edit == null ? "語を追加" : "よみ・品詞・メモを直す";
         Font = new Font("Yu Gothic UI", 9f);
         AutoScaleMode = AutoScaleMode.Dpi;
         Theme.Apply(this);
@@ -45,6 +49,12 @@ sealed class AddWordForm : Form
         Row("語句", txtWord);
         Row("よみ", txtReading);
         Row("品詞", cmbPos);
+        if (edit != null)
+        {
+            txtNote.Text = note;
+            txtNote.AcceptsReturn = false;
+            Row("意味・メモ", txtNote);
+        }
         t.Controls.Add(new Label());
         t.Controls.Add(lblConv);
 
