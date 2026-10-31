@@ -251,26 +251,64 @@ public static class DocumentSources
         return (word, reading);
     }
 
+    /// <summary>見出しの行から、意味・説明の列を推し量る（「意味/定義」「説明」「備考」など。無ければ -1）</summary>
+    public static int GuessNoteColumn(Sheet sheet, int headerRow)
+    {
+        if (headerRow < 0) return -1;
+        var h = sheet.Rows[headerRow].Select(c => c.Trim()).ToArray();
+        int i = Array.FindIndex(h, c => Regex.IsMatch(c, "意味|定義|説明|解説"));
+        return i >= 0 ? i : Array.FindIndex(h, c => c is "備考" or "メモ");
+    }
+
+    /// <summary>用語集の1語</summary>
+    /// <param name="Note">意味・説明（例文の欄に出す）</param>
+    /// <param name="Adjusted">語句を自動で直した（「MOP 遠隔発報装置」→「MOP」など）。確かめてもらうため要確認にする</param>
+    /// <param name="Extra">本来のよみのほかに付けるよみ（英字の語の英字読み など）</param>
+    public sealed record GlossaryEntry(string Word, string Reading, string Note = "", bool Adjusted = false, string Extra = "");
+
+    static readonly Regex AsciiHeadJapaneseTail = new(@"^([\x21-\x7E]+)\s+(.*[ぁ-んァ-ヶ一-龥].*)$");
+    static readonly Regex AsciiOnlyWord = new(@"^[A-Za-z0-9\-_]+$");
+
+    /// <summary>
+    /// 用語集の1語の語句を整える。末尾の括弧書きは外す。「英字の略語＋空白＋日本語の説明」（MOP 遠隔発報装置）は語句を英字だけにして、
+    /// 説明は意味に回す。英字だけの語で、よみが英字読みと違うなら、英字読みも別のよみとして付ける
+    /// </summary>
+    public static GlossaryEntry CleanGlossaryEntry(string word, string reading, string note)
+    {
+        var bare = TrailingNote.Replace(word, "").Trim();
+        if (bare.Length > 0) word = bare;
+        bool adjusted = false;
+        if (AsciiHeadJapaneseTail.Match(word) is { Success: true } m)
+        {
+            note = note.Length > 0 ? $"{m.Groups[2].Value.Trim()}。{note}" : m.Groups[2].Value.Trim();
+            word = m.Groups[1].Value;
+            adjusted = true;
+        }
+        var extra = "";
+        if (AsciiOnlyWord.IsMatch(word) && TermExtractor.AlphabetReading(word) is { } alpha && reading.Length > 0 && alpha != reading)
+            extra = alpha;
+        return new GlossaryEntry(word, reading, note, adjusted, extra);
+    }
+
     /// <summary>
     /// 用語集として、語句とよみの組を取り出す（見出しの行より下）。
     /// 語句は全角英数などをそろえ、1行目だけを使う（60文字まで）。よみはひらがなにし、ひらがなにならなければ空にする
     /// </summary>
-    public static List<(string Word, string Reading)> GlossaryEntries(Sheet sheet, int wordColumn, int readingColumn, int headerRow)
+    public static List<GlossaryEntry> GlossaryEntries(Sheet sheet, int wordColumn, int readingColumn, int headerRow, int noteColumn = -1)
     {
-        var list = new List<(string, string)>();
+        var list = new List<GlossaryEntry>();
         var seen = new HashSet<string>();
         foreach (var row in sheet.Rows.Skip(headerRow + 1))
         {
             if (wordColumn >= row.Length) continue;
             var word = MailPreprocessor.Normalize(SplitLines(row[wordColumn]).FirstOrDefault() ?? "").Trim();
-            // 末尾の括弧書きは説明なので外す（輸管(輸出管理) → 輸管）。外すと空になるなら、そのまま
-            var bare = TrailingNote.Replace(word, "").Trim();
-            if (bare.Length > 0) word = bare;
-            if (word.Length == 0 || word.Length > 60 || !seen.Add(word)) continue;
             var reading = readingColumn >= 0 && readingColumn < row.Length
                 ? TermExtractor.KataToHira(MailPreprocessor.Normalize(row[readingColumn]).Replace(" ", "").Replace("　", "").Trim())
                 : "";
-            list.Add((word, HiraReading.IsMatch(reading) ? reading : ""));
+            var note = noteColumn >= 0 && noteColumn < row.Length ? string.Join(" ", SplitLines(row[noteColumn])) : "";
+            var e = CleanGlossaryEntry(word, HiraReading.IsMatch(reading) ? reading : "", note);
+            if (e.Word.Length == 0 || e.Word.Length > 60 || !seen.Add(e.Word)) continue;
+            list.Add(e);
         }
         return list;
     }

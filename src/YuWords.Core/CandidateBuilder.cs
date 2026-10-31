@@ -22,6 +22,8 @@ public sealed class Candidate
     public List<string> Examples { get; init; } = [];
     /// <summary>よみの出どころ。空なら形態素解析の推測、「連絡先」なら Outlook の連絡先のふりがな</summary>
     public string ReadingSource { get; set; } = "";
+    /// <summary>最初から付けておく別のよみ（用語集の英字の語の英字読み など）</summary>
+    public List<string> ExtraReadings { get; init; } = [];
     /// <summary>長い語の短いよみの提案（ひほか など）。提案できなければ空</summary>
     public string ShortReading { get; set; } = "";
 }

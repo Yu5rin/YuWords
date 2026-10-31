@@ -16,6 +16,7 @@ public sealed class ReviewItem
         Register = !c.Unsure && c.Reading.Length > 0 && !registered;
         ImeConversion = c.ImeConversion;
         if (c.Category == CandidateBuilder.PhraseCategory) Pos = "短縮よみ";
+        ExtraReadings = c.ExtraReadings.Where(r => r.Length > 0 && r != Reading).Distinct().ToList();
     }
 
     /// <summary>本来のよみのほかに登録するよみ（短いよみ・別の言い方）</summary>

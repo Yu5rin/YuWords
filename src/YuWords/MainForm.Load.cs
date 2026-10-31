@@ -126,7 +126,7 @@ sealed partial class MainForm
         if (pick.Glossary)
         {
             // 用語集: 1行に1語なので出現数で絞らず、語句とよみの組をそのまま候補にする
-            var words = pick.Entries().Select(e => (e.Reading, e.Word, "名詞")).ToList();
+            var words = pick.Entries().Select(e => new DictWord(e.Reading, e.Word, "名詞", e.Note, e.Adjusted, e.Extra)).ToList();
             await AddWordsAsync(Path.GetFileName(dlg.FileName), words, "用語集");
             return;
         }
@@ -239,27 +239,34 @@ sealed partial class MainForm
             MessageBox.Show(this, $"読み込めませんでした。\n{ex.Message}", "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
-        await AddWordsAsync(Path.GetFileName(dlg.FileName), words, "共有辞書");
+        await AddWordsAsync(Path.GetFileName(dlg.FileName), words.Select(w => new DictWord(w.Reading, w.Word, w.Pos)).ToList(), "共有辞書");
     }
 
     /// <summary>
     /// 辞書・用語集の語（よみ付き）を、今の一覧に候補として足す。一覧に同じ語があれば足さない。
     /// よみの無い語は IME のよみを推測として使い、要確認にする。IME への問い合わせは裏で並べて行う
     /// </summary>
-    async Task AddWordsAsync(string name, List<(string Reading, string Word, string Pos)> words, string category)
+    /// <summary>辞書・用語集の1語（意味は例文の欄に出す。Adjusted は語句を自動で直したので要確認にする）</summary>
+    sealed record DictWord(string Reading, string Word, string Pos, string Note = "", bool Adjusted = false, string Extra = "");
+
+    async Task AddWordsAsync(string name, List<DictWord> words, string category)
     {
         if (cts != null) return;
         var have = all.Select(i => i.Source.Word).ToHashSet();
         var pos = new Dictionary<string, string>();
         var candidates = new List<Candidate>();
-        foreach (var (reading, word, p) in words.DistinctBy(w => w.Word))
+        foreach (var w in words.DistinctBy(w => w.Word))
         {
-            if (have.Contains(word) || store.Excluded.Contains(word)) continue;
-            pos[word] = p;
+            if (have.Contains(w.Word) || store.Excluded.Contains(w.Word)) continue;
+            pos[w.Word] = w.Pos;
+            var from = $"{name} から" + (w.Adjusted ? "（語句を英字だけにしました。確かめてください）" : "");
             candidates.Add(new Candidate
             {
-                Word = word, Reading = reading, Category = category, Unsure = reading.Length == 0,
-                ReadingSource = reading.Length > 0 ? category : "", Example = $"{name} から",
+                Word = w.Word, Reading = w.Reading, Category = category, Unsure = w.Reading.Length == 0 || w.Adjusted,
+                ReadingSource = w.Reading.Length > 0 ? category : "",
+                Example = w.Note.Length > 0 ? w.Note : from,
+                Examples = w.Note.Length > 0 ? [w.Note, from] : [from],
+                ExtraReadings = w.Extra.Length > 0 ? [w.Extra] : [],
             });
         }
         if (candidates.Count == 0)

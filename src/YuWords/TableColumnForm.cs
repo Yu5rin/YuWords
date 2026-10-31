@@ -16,6 +16,8 @@ sealed class TableColumnForm : Form
     readonly ComboBox cmbColumn = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = Dpi.Scale(300) };
     readonly ComboBox cmbReading = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = Dpi.Scale(300) };
     readonly Label lblReading = new() { Text = "よみの列", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 7, 10, 3) };
+    readonly ComboBox cmbNote = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = Dpi.Scale(300) };
+    readonly Label lblNote = new() { Text = "意味の列", AutoSize = true, Anchor = AnchorStyles.Left, Margin = new Padding(3, 7, 10, 3) };
     readonly TextBox txtPreview = new()
     {
         Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill, WordWrap = false,
@@ -30,6 +32,8 @@ sealed class TableColumnForm : Form
     public int Column => cmbColumn.SelectedIndex;
     /// <summary>よみの列（無ければ -1）</summary>
     public int ReadingColumn => cmbReading.SelectedIndex - 1;
+    /// <summary>意味・説明の列（無ければ -1）。例文の欄に出す</summary>
+    public int NoteColumn => cmbNote.SelectedIndex - 1;
     /// <summary>見出しの行（0始まり。見出しが無ければ -1）。これより下を取り込む</summary>
     public int HeaderRow => (int)numHeader.Value - 1;
     public string ColumnLabel => sheets.Count > 1 ? $"{Sheet.Name} シートの {DocumentSources.ColumnName(Column)} 列" : $"{DocumentSources.ColumnName(Column)} 列";
@@ -39,8 +43,8 @@ sealed class TableColumnForm : Form
         DocumentSources.ColumnDocuments(new DocumentSources.Sheet(Sheet.Name, Sheet.Rows.Skip(HeaderRow + 1).ToList()), Column, false);
 
     /// <summary>用語集として取り込むときの語句とよみ</summary>
-    public List<(string Word, string Reading)> Entries() =>
-        DocumentSources.GlossaryEntries(Sheet, Column, ReadingColumn, HeaderRow);
+    public List<DocumentSources.GlossaryEntry> Entries() =>
+        DocumentSources.GlossaryEntries(Sheet, Column, ReadingColumn, HeaderRow, NoteColumn);
 
     public TableColumnForm(string fileName, List<DocumentSources.Sheet> sheets)
     {
@@ -71,6 +75,7 @@ sealed class TableColumnForm : Form
         Row(L("見出しの行"), header);
         Row(L("語句の列"), cmbColumn);
         Row(lblReading, cmbReading);
+        Row(lblNote, cmbNote);
         Span(new Label { Text = "中身の例:", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
         for (int i = 0; i < rows; i++) t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -91,6 +96,7 @@ sealed class TableColumnForm : Form
         numHeader.ValueChanged += (_, _) => { if (!filling) FillColumns(keepSelection: true); };
         cmbColumn.SelectedIndexChanged += (_, _) => UpdatePreview();
         cmbReading.SelectedIndexChanged += (_, _) => UpdatePreview();
+        cmbNote.SelectedIndexChanged += (_, _) => UpdatePreview();
         rdoGlossary.CheckedChanged += (_, _) => { if (!filling) { UpdateMode(); UpdatePreview(); } };
         if (sheets.Count > 0) cmbSheet.SelectedIndex = 0;
         else ok.Enabled = false;
@@ -108,6 +114,8 @@ sealed class TableColumnForm : Form
         FillColumns(keepSelection: false);
         if (word >= 0 && word < cmbColumn.Items.Count) cmbColumn.SelectedIndex = word;
         if (reading >= 0 && reading + 1 < cmbReading.Items.Count) cmbReading.SelectedIndex = reading + 1;
+        int note = DocumentSources.GuessNoteColumn(Sheet, headerRow);
+        if (note >= 0 && note + 1 < cmbNote.Items.Count) cmbNote.SelectedIndex = note + 1;
         filling = false;
         UpdateMode();
         UpdatePreview();
@@ -115,16 +123,18 @@ sealed class TableColumnForm : Form
 
     void UpdateMode()
     {
-        lblReading.Visible = cmbReading.Visible = Glossary;
+        lblReading.Visible = cmbReading.Visible = lblNote.Visible = cmbNote.Visible = Glossary;
         ok.Text = Glossary ? "取り込む" : "読み込む";
     }
 
     void FillColumns(bool keepSelection)
     {
-        int keepCol = cmbColumn.SelectedIndex, keepRead = cmbReading.SelectedIndex;
+        int keepCol = cmbColumn.SelectedIndex, keepRead = cmbReading.SelectedIndex, keepNote = cmbNote.SelectedIndex;
         cmbColumn.Items.Clear();
         cmbReading.Items.Clear();
+        cmbNote.Items.Clear();
         cmbReading.Items.Add("（よみの列なし。IME に問い合わせる）");
+        cmbNote.Items.Add("（なし）");
         var header = HeaderRow >= 0 && HeaderRow < Sheet.Rows.Count ? Sheet.Rows[HeaderRow] : [];
         for (int c = 0; c < Sheet.ColumnCount; c++)
         {
@@ -132,10 +142,12 @@ sealed class TableColumnForm : Form
             var label = c < header.Length && header[c].Trim().Length > 0 ? $"{name}: {header[c].Trim()}" : name;
             cmbColumn.Items.Add(label);
             cmbReading.Items.Add(label);
+            cmbNote.Items.Add(label);
         }
         if (cmbColumn.Items.Count == 0) { ok.Enabled = false; txtPreview.Text = ""; lblCount.Text = "空のシートです。"; return; }
         cmbColumn.SelectedIndex = keepSelection && keepCol >= 0 && keepCol < cmbColumn.Items.Count ? keepCol : LongestColumn();
         cmbReading.SelectedIndex = keepSelection && keepRead >= 0 && keepRead < cmbReading.Items.Count ? keepRead : 0;
+        cmbNote.SelectedIndex = keepSelection && keepNote >= 0 && keepNote < cmbNote.Items.Count ? keepNote : 0;
         UpdatePreview();
     }
 
@@ -159,9 +171,13 @@ sealed class TableColumnForm : Form
         if (Glossary)
         {
             var e = Entries();
-            txtPreview.Text = string.Join("\r\n", e.Take(30).Select(x => x.Reading.Length > 0 ? $"{x.Word}（{x.Reading}）" : $"{x.Word}（よみなし）"));
-            int noReading = e.Count(x => x.Reading.Length == 0);
-            lblCount.Text = $"取り込む語: {e.Count} 語" + (noReading > 0 ? $"（よみなし {noReading} 語は IME に問い合わせ、要確認にします）" : "");
+            txtPreview.Text = string.Join("\r\n", e.Take(30).Select(x =>
+                (x.Reading.Length > 0 ? $"{x.Word}（{x.Reading}）" : $"{x.Word}（よみなし）") +
+                (x.Extra.Length > 0 ? $"［別のよみ {x.Extra}］" : "") + (x.Adjusted ? "［語句を直した］" : "") +
+                (x.Note.Length > 0 ? $" … {(x.Note.Length > 30 ? x.Note[..30] + "…" : x.Note)}" : "")));
+            int noReading = e.Count(x => x.Reading.Length == 0), adjusted = e.Count(x => x.Adjusted);
+            lblCount.Text = $"取り込む語: {e.Count} 語" + (noReading > 0 ? $"（よみなし {noReading} 語は IME に問い合わせ、要確認にします）" : "") +
+                            (adjusted > 0 ? $"（「英字＋説明」の {adjusted} 語は語句を英字だけにし、要確認にします）" : "");
             ok.Enabled = e.Count > 0;
         }
         else

@@ -78,22 +78,25 @@ public sealed class TermExtractor
 
     static bool IsAscii(string s) => AsciiOnly.IsMatch(s);
 
+    /// <summary>英数字を1文字ずつアルファベット読み・数字読みにする（MOP → えむおーぴー）。読めない文字があれば null</summary>
+    public static string? AlphabetReading(string ascii)
+    {
+        var sb = new StringBuilder();
+        foreach (var ch in ascii.ToUpperInvariant())
+        {
+            if (AlphaReading.TryGetValue(ch, out var a)) sb.Append(a);
+            else if (DigitReading.TryGetValue(ch, out var d)) sb.Append(d);
+            else if (ch is '-' or '_') sb.Append('ー');
+            else return null;
+        }
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
     /// <summary>1トークンのよみ。英数字はアルファベット読みにする。作れなければ null</summary>
     static string? TokenReading(Token t)
     {
         var s = t.Surface;
-        if (IsAscii(s))
-        {
-            var sb = new StringBuilder();
-            foreach (var ch in s.ToUpperInvariant())
-            {
-                if (AlphaReading.TryGetValue(ch, out var a)) sb.Append(a);
-                else if (DigitReading.TryGetValue(ch, out var d)) sb.Append(d);
-                else if (ch is '-' or '_') sb.Append('ー');
-                else return null;
-            }
-            return sb.ToString();
-        }
+        if (IsAscii(s)) return AlphabetReading(s);
         if (!string.IsNullOrEmpty(t.Kana))
             return KataToHira(t.Kana);
         // 未知語は辞書に仮名形がない。仮名だけの語なら表記をそのままよみにする（Sudachi と同じ）
