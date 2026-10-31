@@ -23,6 +23,12 @@ public sealed class AppSettings
     /// <summary>フォルダから読み込むとき、最近この日数以内に更新したファイルだけにする（0 ならすべて）</summary>
     public int FolderDays { get; set; }
 
+    /// <summary>
+    /// IME のユーザー辞書を直接使うか（直接登録・照合・取り込み）。使っている最中に落ちたら自動で false にする。
+    /// false のときは、登録は辞書ファイルへの出力とユーザー辞書ツールで行う
+    /// </summary>
+    public bool UseImeDictionary { get; set; } = true;
+
     /// <summary>読み込んだとき、IME のユーザー辞書に既にある語を「登録済み」にするか</summary>
     public bool CheckImeDictionary { get; set; } = true;
 

@@ -28,6 +28,8 @@ static class Program
             {
                 store = new AppStore();
                 Log.Init(store.Dir);
+                ImeDictionary.CrashMarkerPath = Path.Combine(store.Dir, "ime_dictionary_in_use");
+                ImeRegistration.Enabled = store.Settings.UseImeDictionary;
                 Application.Run(new CheckNewRunner(store));
             }
             catch (Exception e) { Log.Error("自動チェックを始められませんでした", e); }
@@ -40,6 +42,21 @@ static class Program
             Theme.Select(store.Settings.ThemeMode);
             Log.Init(store.Dir);
             Log.Info($"起動 {Application.ProductVersion}");
+            ImeDictionary.CrashMarkerPath = Path.Combine(store.Dir, "ime_dictionary_in_use");
+            if (ImeDictionary.CrashedLastTime())
+            {
+                // 前回、IME のユーザー辞書を使っている最中に落ちた。同じことを繰り返さないよう直接使うのをやめる
+                Log.Error("前回、IME のユーザー辞書を使っている最中に終了したため、直接使う設定を OFF にしました");
+                store.Settings.UseImeDictionary = false;
+                store.SaveSettings();
+                MessageBox.Show(
+                    "前回、IME のユーザー辞書を使っている最中に YuWords が止まりました。\n\n" +
+                    "同じことが起きないよう、IME のユーザー辞書を直接使う機能（直接登録・登録済みの照合）を OFF にしました。\n" +
+                    "登録は「辞書ファイルに出力」してユーザー辞書ツールで取り込めます。\n\n" +
+                    "［設定］→［抽出］の「IME のユーザー辞書を直接使う」で ON に戻せます。",
+                    "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            ImeRegistration.Enabled = store.Settings.UseImeDictionary;
             Application.ThreadException += (_, e) =>
             {
                 Log.Error("予期しないエラー", e.Exception);

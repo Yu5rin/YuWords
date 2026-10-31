@@ -67,7 +67,12 @@ public static class Diagnostics
             using var dic = ImeDictionary.Open();
             var words = dic.GetUserWords();
             var pos = string.Join("、", dic.PosNumbers.Select(kv => $"{kv.Key}={kv.Value}"));
-            return (CheckStatus.OK, $"開けました。登録されている語 {words.Count} 語。品詞番号 {pos}");
+            int hr = dic.LastGetWordsResult;
+            // IFED_S_EMPTY_DICTIONARY（0x00047201）・IFED_E_NO_ENTRY（0x80047304）は「登録されている語なし」。ほかの負の値は読み取りの失敗
+            bool empty = hr is 0x00047201 or unchecked((int)0x80047304);
+            var result = empty ? "登録されている語なし" : hr < 0 ? $"語を読めませんでした（0x{hr:X8}）" : "読めました";
+            return (hr < 0 && !empty ? CheckStatus.Warning : CheckStatus.OK,
+                $"開けました。登録されている語 {words.Count} 語（{result}）。品詞番号 {pos}");
         });
 
         Add("ユーザー辞書ツール", () => ImeDictionary.DictionaryToolPath() is { } p

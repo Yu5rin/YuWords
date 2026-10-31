@@ -17,9 +17,14 @@ public static class ImeRegistration
     /// IME の COM を使うので STA スレッドで呼ぶこと。
     /// ユーザー辞書を開けなければ InvalidOperationException（何も登録しない）
     /// </summary>
+    /// <summary>IME のユーザー辞書を直接使ってよいか（設定。前回落ちたら false になる）</summary>
+    public static bool Enabled { get; set; } = true;
+
     public static RegistrationReport Run(IReadOnlyList<(string Reading, string Word, string Pos)> words, AppStore store,
         IProgress<int>? progress = null, CancellationToken ct = default)
     {
+        if (!Enabled)
+            throw new InvalidOperationException("IME のユーザー辞書を直接使う設定が OFF です（［設定］→［抽出］）。");
         var report = new RegistrationReport();
         using (var dic = ImeDictionary.Open())
         {
@@ -45,6 +50,7 @@ public static class ImeRegistration
     /// <summary>IME のユーザー辞書の語（よみ・表記）。開けなければ null</summary>
     public static HashSet<(string Word, string Reading)>? ReadUserDictionary()
     {
+        if (!Enabled) return null;
         try
         {
             using var dic = ImeDictionary.Open();
@@ -59,6 +65,7 @@ public static class ImeRegistration
     /// <summary>IME のユーザー辞書の語をすべて登録済みリストに入れる（持ち出し用辞書に含めるため）。戻り値は追加した数</summary>
     public static int ImportUserDictionary(AppStore store)
     {
+        if (!Enabled) throw new InvalidOperationException("IME のユーザー辞書を直接使う設定が OFF です（［設定］→［抽出］）。");
         using var dic = ImeDictionary.Open();
         return store.AddRegistered(dic.GetUserWords().Select(w => (w.Word, w.Reading, w.Pos)));
     }
@@ -66,6 +73,7 @@ public static class ImeRegistration
     /// <summary>登録済みの語を IME のユーザー辞書から消し、登録済みリストからも外す。戻り値は IME から消せた数</summary>
     public static int Unregister(IReadOnlyList<RegisteredWord> words, AppStore store)
     {
+        if (!Enabled) throw new InvalidOperationException("IME のユーザー辞書を直接使う設定が OFF です（［設定］→［抽出］）。");
         int n = 0;
         using (var dic = ImeDictionary.Open())
             foreach (var w in words)

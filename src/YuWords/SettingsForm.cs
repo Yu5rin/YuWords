@@ -16,6 +16,7 @@ sealed class SettingsForm : Form
     readonly TextBox txtExcluded = Multi();
     readonly TextBox txtRules = Multi();
     readonly TextBox txtBackup = new() { Width = Dpi.Scale(360) };
+    readonly CheckBox chkUseIme = new() { Text = "IME のユーザー辞書を直接使う（直接登録・登録済みの照合。OFF なら辞書ファイルに出力して取り込む）", AutoSize = true, Margin = new Padding(3, 4, 3, 3) };
     readonly CheckBox chkImeDic = new() { Text = "IME のユーザー辞書に既にある語を「登録済み」にする", AutoSize = true, Margin = new Padding(3, 4, 3, 3) };
     readonly CheckBox chkGal = new() { Text = "会社のアドレス帳（Exchange）のふりがなでも補う（時間がかかることがあります）", AutoSize = true, Margin = new Padding(3, 2, 3, 3) };
     readonly NumericUpDown numFolderDays = new() { Minimum = 0, Maximum = 36500 };
@@ -57,6 +58,7 @@ sealed class SettingsForm : Form
         chkContacts.Text = "Outlook の連絡先のふりがなで人名のよみを補う";
         chkContacts.Checked = s.UseContactReadings;
         chkImeDic.Checked = s.CheckImeDictionary;
+        chkUseIme.Checked = s.UseImeDictionary;
         chkGal.Checked = s.UseGalReadings;
         numFolderDays.Value = Math.Clamp(s.FolderDays, 0, 36500);
         numFont.Value = (decimal)Math.Clamp(s.FontSize, 8f, 16f);
@@ -124,6 +126,8 @@ sealed class SettingsForm : Form
         t.SetColumnSpan(chkContacts, 3);
         t.Controls.Add(chkGal);
         t.SetColumnSpan(chkGal, 3);
+        t.Controls.Add(chkUseIme);
+        t.SetColumnSpan(chkUseIme, 3);
         t.Controls.Add(chkImeDic);
         t.SetColumnSpan(chkImeDic, 3);
         var page = new TabPage("抽出");
@@ -402,6 +406,8 @@ sealed class SettingsForm : Form
         s.Extractor.ReadingRules = txtRules.Lines.Select(l => l.Trim()).Where(l => l.Length > 0).Distinct().ToList();
         s.UseContactReadings = chkContacts.Checked;
         s.CheckImeDictionary = chkImeDic.Checked;
+        s.UseImeDictionary = chkUseIme.Checked;
+        ImeRegistration.Enabled = s.UseImeDictionary;
         s.UseGalReadings = chkGal.Checked;
         s.FolderDays = (int)numFolderDays.Value;
         s.FontSize = (float)numFont.Value;

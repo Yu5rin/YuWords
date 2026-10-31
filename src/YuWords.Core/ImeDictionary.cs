@@ -31,7 +31,8 @@ public sealed class ImeDictionary : IDisposable
         [PreserveSig] int RegisterWord(int reg, ref IMEWRD pwrd);
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    // msime.h は全体が #pragma pack(1)（詰めて並べる）。x64 で 44 バイト（pvComment の前に詰め物を入れない）
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     struct IMEWRD
     {
         public IntPtr pwchReading;
@@ -45,7 +46,7 @@ public sealed class ImeDictionary : IDisposable
         public IntPtr pvComment;
     }
 
-    /// <summary>IMEWRD の大きさ（msime.h と同じ並びになっているかのテスト用。x64 で 48）</summary>
+    /// <summary>IMEWRD の大きさ（msime.h と同じ並びになっているかのテスト用。pack(1) なので x64 で 44）</summary>
     internal static int WordStructSize => Marshal.SizeOf<IMEWRD>();
 
     /// <summary>実際に使う品詞番号（実機確認用）</summary>
@@ -77,7 +78,46 @@ public sealed class ImeDictionary : IDisposable
     }
 
     /// <summary>ユーザー辞書を開く。使えなければ例外（メッセージは利用者向け）</summary>
+    /// <summary>
+    /// IME のユーザー辞書を使っている最中に置く印のファイル。COM の中でアプリが落ちると消えずに残るので、
+    /// 次の起動で「前回ここで落ちた」と分かる（落ちる種類の例外はアプリの中で受け止められないため）
+    /// </summary>
+    public static string? CrashMarkerPath { get; set; }
+
+    /// <summary>前回、IME のユーザー辞書を使っている最中に落ちていたら true（印は消す）</summary>
+    public static bool CrashedLastTime()
+    {
+        if (CrashMarkerPath == null || !File.Exists(CrashMarkerPath)) return false;
+        try { File.Delete(CrashMarkerPath); } catch (Exception) { }
+        return true;
+    }
+
+    static void SetMarker(bool on)
+    {
+        if (CrashMarkerPath == null) return;
+        try
+        {
+            if (on) File.WriteAllText(CrashMarkerPath, DateTime.Now.ToString("O"));
+            else File.Delete(CrashMarkerPath);
+        }
+        catch (Exception) { }
+    }
+
     public static ImeDictionary Open()
+    {
+        SetMarker(true);
+        try
+        {
+            return OpenCore();
+        }
+        catch
+        {
+            SetMarker(false);
+            throw;
+        }
+    }
+
+    static ImeDictionary OpenCore()
     {
         var type = Type.GetTypeFromProgID("MSIME.Japan")
                    ?? throw new InvalidOperationException("Microsoft IME（MSIME.Japan）が見つかりません。");
@@ -115,6 +155,9 @@ public sealed class ImeDictionary : IDisposable
     }
 
     /// <summary>IME の品詞表（名前は Shift_JIS）から、使う品詞の番号を引く</summary>
+    /// <summary>品詞表の1件の大きさ（WORD ＋ ポインタ、pack(1)）</summary>
+    internal static int PosEntrySize => 2 + IntPtr.Size;
+
     static Dictionary<string, ushort> ReadPosTable(IFEDictionary dic)
     {
         var map = new Dictionary<string, ushort>(DefaultPos);
@@ -123,13 +166,14 @@ public sealed class ImeDictionary : IDisposable
             if (dic.GetPosTable(out var tbl, out int n) < 0 || tbl == IntPtr.Zero) return map;
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             var sjis = Encoding.GetEncoding(932);
-            int size = IntPtr.Size * 2;   // { WORD nPos; BYTE* szName; }（ポインタ境界に揃う）
+            // { WORD nPos; BYTE* szName; } を pack(1) で並べたもの。名前のポインタは 2 バイト目から（詰め物なし）
+            int size = PosEntrySize;
             var found = new Dictionary<string, ushort>();
             for (int i = 0; i < n; i++)
             {
                 var entry = tbl + i * size;
                 var nPos = (ushort)Marshal.ReadInt16(entry);
-                var namePtr = Marshal.ReadIntPtr(entry + IntPtr.Size);
+                var namePtr = Marshal.ReadIntPtr(entry + 2);
                 if (namePtr == IntPtr.Zero) continue;
                 int len = 0;
                 while (Marshal.ReadByte(namePtr + len) != 0 && len < 64) len++;
@@ -176,6 +220,9 @@ public sealed class ImeDictionary : IDisposable
     const uint IFED_REG_USER = 0x1;
     const int IFED_S_MORE_ENTRIES = 0x00047200;
 
+    /// <summary>最後の GetWords の結果コード（環境チェックで、空なのか読めなかったのかを見分けるため）</summary>
+    public int LastGetWordsResult { get; private set; }
+
     /// <summary>
     /// ユーザー辞書に入っている語（ユーザー登録分）をすべて読む。
     /// YuWords 以外の方法（ユーザー辞書ツール・単語の登録）で入れた語も含む
@@ -190,6 +237,7 @@ public sealed class ImeDictionary : IDisposable
         {
             int hr = dic.GetWords(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IFED_POS_ALL,
                 IFED_SELECT_READING | IFED_SELECT_DISPLAY | IFED_SELECT_POS, IFED_REG_USER, buf, size, out uint n);
+            LastGetWordsResult = hr;
             for (int guard = 0; hr >= 0 && guard < 10000; guard++)
             {
                 for (int i = 0; i < n; i++)
@@ -223,6 +271,7 @@ public sealed class ImeDictionary : IDisposable
     {
         try { dic.Close(); } catch (Exception) { }
         Marshal.ReleaseComObject(dic);
+        SetMarker(false);
     }
 
     /// <summary>Microsoft IME のユーザー辞書ツールの場所。見つからなければ null</summary>

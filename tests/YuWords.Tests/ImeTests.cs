@@ -15,8 +15,25 @@ public sealed class ImeTests : IDisposable
     [Fact]
     public void IMEWRDはmsime_hと同じ大きさ()
     {
-        // pwchReading, pwchDisplay, (nPos1,nPos2), rgulAttrs[2], cbComment, uct, pvComment
-        Assert.Equal(Environment.Is64BitProcess ? 48 : 32, ImeDictionary.WordStructSize);
+        // msime.h は #pragma pack(1)。pwchReading, pwchDisplay, (nPos1,nPos2), rgulAttrs[2], cbComment, uct, pvComment を詰めて並べる
+        Assert.Equal(Environment.Is64BitProcess ? 44 : 32, ImeDictionary.WordStructSize);
+        // POSTBL も詰めて並べる（WORD の直後にポインタ）
+        Assert.Equal(Environment.Is64BitProcess ? 10 : 6, ImeDictionary.PosEntrySize);
+    }
+
+    [Fact]
+    public void 前回IMEの辞書を使っている最中に落ちたことが分かる()
+    {
+        var marker = Path.Combine(dir, "ime_dictionary_in_use");
+        ImeDictionary.CrashMarkerPath = marker;
+        try
+        {
+            Assert.False(ImeDictionary.CrashedLastTime());
+            File.WriteAllText(marker, "");             // 落ちて印が残った
+            Assert.True(ImeDictionary.CrashedLastTime());
+            Assert.False(File.Exists(marker));          // 一度知らせたら消す
+        }
+        finally { ImeDictionary.CrashMarkerPath = null; }
     }
 
     [Fact]
