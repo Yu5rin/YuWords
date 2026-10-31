@@ -11,7 +11,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
     <Product>YuWords</Product>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <Company>YUGO</Company>

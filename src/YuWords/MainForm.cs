@@ -219,8 +219,8 @@ sealed partial class MainForm : Form
                 : "前回以降の新しいメールだけ読み込む（一度読み込むと使えます）";
         };
         btnOther.DropDownItems.Add("フォルダ（Obsidian の Vault・テキスト・Word・PowerPoint）...", null, async (_, _) => await LoadFolderAsync());
-        btnOther.DropDownItems.Add("Excel・CSV の列...", null, async (_, _) => await LoadTableAsync());
-        btnOther.DropDownItems.Add("同僚の辞書（共有辞書）...", null, (_, _) => LoadShared());
+        btnOther.DropDownItems.Add("Excel・CSV（用語集・文章の列）...", null, async (_, _) => await LoadTableAsync());
+        btnOther.DropDownItems.Add("同僚の辞書（共有辞書）...", null, async (_, _) => await LoadShared());
         btnOther.DropDownItems.Add(new ToolStripSeparator());
         btnOther.DropDownItems.Add("メールのテキスト（「---」区切り）...", null, async (_, _) => await LoadMailTextAsync());
         btnCancel.Click += (_, _) => cts?.Cancel();

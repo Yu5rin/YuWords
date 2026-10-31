@@ -6,7 +6,8 @@ sealed class HelpForm : Form
     const string Guide = """
         ■ 流れ
         1. 「Outlook から読み込む」で送信メールから候補を集める（▼で「前回以降の新しいメールだけ」）
-           「ほかから読み込む」でフォルダ（Obsidian・テキスト・Word・PowerPoint）や Excel・CSV の列も読めます
+           「ほかから読み込む」でフォルダ（Obsidian・テキスト・Word・PowerPoint）や Excel・CSV も読めます
+           （Excel・CSV は、用語集の語句とよみの列をそのまま取り込むか、文章の列から語を抽出するかを選べます）
            「今の一覧に追加」を ON にすると、今の一覧に足して数え直します
         2. 一覧で登録する語を選ぶ（読み込み直後は「おすすめ」の高い順）
         3. 「IME に登録」でユーザー辞書に登録（できないときは IME 用テキストに出力して取り込み）

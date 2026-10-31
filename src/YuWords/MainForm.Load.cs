@@ -123,7 +123,14 @@ sealed partial class MainForm
 
         using var pick = new TableColumnForm(Path.GetFileName(dlg.FileName), sheets);
         if (pick.ShowDialog(this) != DialogResult.OK) return;
-        var docs = DocumentSources.ColumnDocuments(pick.Sheet, pick.Column, pick.SkipHeader);
+        if (pick.Glossary)
+        {
+            // 用語集: 1行に1語なので出現数で絞らず、語句とよみの組をそのまま候補にする
+            var words = pick.Entries().Select(e => (e.Reading, e.Word, "名詞")).ToList();
+            await AddWordsAsync(Path.GetFileName(dlg.FileName), words, "用語集");
+            return;
+        }
+        var docs = pick.Documents();
         await LoadAsync(new Source($"{Path.GetFileName(dlg.FileName)} の {pick.ColumnLabel}", "行", (_, _) => docs));
     }
 
@@ -133,7 +140,7 @@ sealed partial class MainForm
     void KeepAddedItems(Dictionary<string, ReviewItem> old)
     {
         var fresh = all.Select(i => i.Source.Word).ToHashSet();
-        all.AddRange(old.Values.Where(o => o.Category is "手入力" or "共有辞書" && !fresh.Contains(o.Source.Word)));
+        all.AddRange(old.Values.Where(o => o.Category is "手入力" or "共有辞書" or "用語集" && !fresh.Contains(o.Source.Word)));
     }
 
     /// <summary>候補から一覧の行を作る。前の一覧での選択・保留にしたときの選択を引き継ぐ</summary>
@@ -216,7 +223,7 @@ sealed partial class MainForm
     /// 同僚から受け取った辞書（Microsoft IME・Google 日本語入力・ATOK のテキストか CSV）を、今の一覧に候補として足す。
     /// よみは辞書のものを使う。一覧に同じ語があれば足さない
     /// </summary>
-    void LoadShared()
+    async Task LoadShared()
     {
         if (cts != null) return;
         using var dlg = new OpenFileDialog
@@ -232,36 +239,88 @@ sealed partial class MainForm
             MessageBox.Show(this, $"読み込めませんでした。\n{ex.Message}", "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
+        await AddWordsAsync(Path.GetFileName(dlg.FileName), words, "共有辞書");
+    }
+
+    /// <summary>
+    /// 辞書・用語集の語（よみ付き）を、今の一覧に候補として足す。一覧に同じ語があれば足さない。
+    /// よみの無い語は IME のよみを推測として使い、要確認にする。IME への問い合わせは裏で並べて行う
+    /// </summary>
+    async Task AddWordsAsync(string name, List<(string Reading, string Word, string Pos)> words, string category)
+    {
+        if (cts != null) return;
         var have = all.Select(i => i.Source.Word).ToHashSet();
-        var name = Path.GetFileName(dlg.FileName);
-        var added = new List<ReviewItem>();
-        foreach (var (reading, word, pos) in words.DistinctBy(w => w.Word))
+        var pos = new Dictionary<string, string>();
+        var candidates = new List<Candidate>();
+        foreach (var (reading, word, p) in words.DistinctBy(w => w.Word))
         {
             if (have.Contains(word) || store.Excluded.Contains(word)) continue;
-            var c = new Candidate
+            pos[word] = p;
+            candidates.Add(new Candidate
             {
-                Word = word, Reading = reading, Category = "共有辞書", ReadingSource = "共有辞書",
-                Example = $"{name} から", ImeReading = UiIme.Phonetic(word),
-            };
-            var item = new ReviewItem(c, store.IsRegistered(word, reading)) { Pos = pos };
-            item.Register = !item.IsRegistered;
-            Reconvert(item);
-            added.Add(item);
+                Word = word, Reading = reading, Category = category, Unsure = reading.Length == 0,
+                ReadingSource = reading.Length > 0 ? category : "", Example = $"{name} から",
+            });
         }
-        if (added.Count == 0)
+        if (candidates.Count == 0)
         {
             SetStatus($"{name} に、今の一覧に無い語はありませんでした。");
             return;
         }
+
+        cts = new CancellationTokenSource();
+        SetBusy(true);
+        SetStatus($"{name} の {candidates.Count} 語を IME に問い合わせています...");
+        bool checkIme = store.Settings.CheckImeDictionary;
+        HashSet<(string Word, string Reading)>? imeWords;
+        try
+        {
+            var token = cts.Token;
+            imeWords = await StaTask.Run(() =>
+            {
+                ImeLookup.Fill(candidates, token);
+                return checkIme ? ImeRegistration.ReadUserDictionary() : null;
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            SetStatus("中止しました。");
+            return;
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"{category}の取り込みに失敗", ex);
+            MessageBox.Show(this, ex.Message, "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        finally
+        {
+            cts.Dispose();
+            cts = null;
+            SetBusy(false);
+        }
+
+        var added = candidates.Select(c =>
+        {
+            bool inIme = imeWords?.Contains((c.Word, c.Reading)) == true;
+            var item = new ReviewItem(c, inIme || store.IsRegistered(c.Word, c.Reading)) { InImeDictionary = inIme, Pos = pos[c.Word] };
+            item.Register = !item.IsRegistered && !c.Unsure && c.Reading.Length > 0;
+            return item;
+        }).ToList();
         all.AddRange(added);
-        PushUndo($"共有辞書（{name}）を追加", () => all.RemoveAll(added.Contains));
+        PushUndo($"{category}（{name}）を追加", () => all.RemoveAll(added.Contains));
         restoredSources = [.. (loaded.Count > 0 ? loaded.Select(l => l.Name) : restoredSources), name];
         if (loaded.Count > 0) loaded = [.. loaded, new LoadedSource(name, "", [])];
         Text = $"YuWords - {string.Join(" ＋ ", loaded.Count > 0 ? loaded.Select(l => l.Name) : restoredSources)}";
         Refilter();
         ScheduleSave();
-        Log.Info($"共有辞書: {words.Count} 語中 {added.Count} 語を追加");
-        SetStatus($"{name} から {added.Count} 語を一覧に足しました（分類「共有辞書」）。登録済みの語は灰色で出ます。");
+        int noReading = added.Count(i => i.Source.ReadingSource == "IME");
+        int registered = added.Count(i => i.IsRegistered);
+        Log.Info($"{category}: {words.Count} 語中 {added.Count} 語を追加（よみなし {noReading}、登録済み {registered}）");
+        SetStatus($"{name} から {added.Count} 語を一覧に足しました（分類「{category}」）。" +
+                  (noReading > 0 ? $"よみの無かった {noReading} 語は IME のよみを入れ、要確認にしています。" : "") +
+                  (registered > 0 ? $"登録済みの {registered} 語は灰色で出ます。" : "") +
+                  "よみを確かめて「IME に登録」してください。");
     }
 
     async Task LoadAsync(Source source)
@@ -339,6 +398,15 @@ sealed partial class MainForm
                 ? string.Join("、", loaded.Select(l => $"{l.Name} {l.Docs.Count} 件"))
                 : $"{docs.Count} 件の{source.Unit}";
             SaveSession();
+            if (rows.Count == 0 && !merge)
+            {
+                // 文書はあるのに候補が無い: 出現数の条件で全部落ちたことが多い（用語集など1件ずつの表）
+                MessageBox.Show(this,
+                    $"{docs.Count} 件の{source.Unit}を読みましたが、候補になる語はありませんでした。\n\n" +
+                    $"候補にするのは {settings.MinMails} 件以上に出た語だけです（［設定］→［抽出］の「候補にする出現数」）。\n" +
+                    "1行に1語の用語集なら、「ほかから読み込む」→「Excel・CSV」で「用語集として取り込む」を選んでください。",
+                    "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
             Log.Info($"読み込み: {source.Name} {docs.Count} 件 → 候補 {all.Count} 語（{sw.Elapsed.TotalSeconds:F1} 秒、追加={merge}）");
             SetStatus($"{what}から {all.Count} 語の候補を抽出しました（{sw.Elapsed.TotalSeconds:F1} 秒）。" +
                       "黄色のよみは推測です。確認して直すと登録チェックが付きます。");

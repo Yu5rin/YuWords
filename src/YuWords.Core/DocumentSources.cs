@@ -225,6 +225,56 @@ public static class DocumentSources
         return docs;
     }
 
+    static readonly Regex HeaderWord = new(@"^(用語|語句|単語|表記|見出し語|キーワード|読み|読み方|よみ|よみがな|ふりがな|フリガナ|読み仮名)$");
+    static readonly Regex HiraReading = new(@"^[ぁ-んー]+$");
+    static readonly Regex TrailingNote = new(@"(\s*\([^()]*\))+$");
+
+    /// <summary>
+    /// 見出しの行を探す（先頭 15 行のうち「用語」「読み方」などの見出しがある最初の行）。見つからなければ -1。
+    /// 用語集は上に題名や注意書きの行があることが多いので、1行目とは限らない
+    /// </summary>
+    public static int FindHeaderRow(Sheet sheet)
+    {
+        for (int r = 0; r < Math.Min(sheet.Rows.Count, 15); r++)
+            if (sheet.Rows[r].Any(c => HeaderWord.IsMatch(c.Trim())))
+                return r;
+        return -1;
+    }
+
+    /// <summary>見出しの行から、語句の列とよみの列を推し量る（無ければ -1）</summary>
+    public static (int Word, int Reading) GuessGlossaryColumns(Sheet sheet, int headerRow)
+    {
+        if (headerRow < 0) return (-1, -1);
+        var h = sheet.Rows[headerRow].Select(c => c.Trim()).ToArray();
+        int word = Array.FindIndex(h, c => c is "用語" or "語句" or "単語" or "表記" or "見出し語" or "キーワード");
+        int reading = Array.FindIndex(h, c => c is "読み" or "読み方" or "よみ" or "よみがな" or "ふりがな" or "フリガナ" or "読み仮名");
+        return (word, reading);
+    }
+
+    /// <summary>
+    /// 用語集として、語句とよみの組を取り出す（見出しの行より下）。
+    /// 語句は全角英数などをそろえ、1行目だけを使う（60文字まで）。よみはひらがなにし、ひらがなにならなければ空にする
+    /// </summary>
+    public static List<(string Word, string Reading)> GlossaryEntries(Sheet sheet, int wordColumn, int readingColumn, int headerRow)
+    {
+        var list = new List<(string, string)>();
+        var seen = new HashSet<string>();
+        foreach (var row in sheet.Rows.Skip(headerRow + 1))
+        {
+            if (wordColumn >= row.Length) continue;
+            var word = MailPreprocessor.Normalize(SplitLines(row[wordColumn]).FirstOrDefault() ?? "").Trim();
+            // 末尾の括弧書きは説明なので外す（輸管(輸出管理) → 輸管）。外すと空になるなら、そのまま
+            var bare = TrailingNote.Replace(word, "").Trim();
+            if (bare.Length > 0) word = bare;
+            if (word.Length == 0 || word.Length > 60 || !seen.Add(word)) continue;
+            var reading = readingColumn >= 0 && readingColumn < row.Length
+                ? TermExtractor.KataToHira(MailPreprocessor.Normalize(row[readingColumn]).Replace(" ", "").Replace("　", "").Trim())
+                : "";
+            list.Add((word, HiraReading.IsMatch(reading) ? reading : ""));
+        }
+        return list;
+    }
+
     /// <summary>列番号（0始まり）を Excel の列名（A, B, ..., AA）にする</summary>
     public static string ColumnName(int index)
     {
