@@ -31,6 +31,12 @@ public sealed class TermExtractor
     ];
     static readonly HashSet<string> TrailStrip = ["様", "さん", "殿", "各位", "等", "宛"];
 
+    /// <summary>
+    /// 末尾にあれば外す接尾辞（来週中・是正済み・ページ目・月毎 のように、どの語にも付く言い方）。
+    /// 課・部・係などの組織の接尾辞は語の一部なので外さない
+    /// </summary>
+    static readonly HashSet<string> TrailSuffixStrip = ["中", "済み", "済", "目", "毎", "ごと", "頃", "ごろ", "以降", "以前", "明け", "付け", "付"];
+
     static readonly Dictionary<char, string> AlphaReading = new()
     {
         ['A'] = "えー", ['B'] = "びー", ['C'] = "しー", ['D'] = "でぃー", ['E'] = "いー", ['F'] = "えふ",
@@ -138,6 +144,15 @@ public sealed class TermExtractor
         return t.Pos1 == "接尾辞" && t.Pos2 == "名詞的";   // 部・課・係・室・様 など
     }
 
+    /// <summary>
+    /// 漢字1文字ずつの略語の途中にある接頭辞（桐・電・盤 の「電」）。UniDic は漢字1文字を接頭辞にすることがあり、
+    /// そこで複合語が切れてしまうので、前も後ろも名詞で、前が1文字の語のときだけ名詞の一部として扱う（本社新工場 のような普通の語はつなげない）
+    /// </summary>
+    static bool IsInnerPrefix(List<Token> buf, Token t, Token? next) =>
+        t.Pos1 == "接頭辞" && t.Surface.Length == 1 && Kanji.IsMatch(t.Surface)
+        && buf.Count > 0 && buf[^1].Surface.Length == 1 && Kanji.IsMatch(buf[^1].Surface)
+        && next != null && IsNounPart(next);
+
     List<Token> Trim(List<Token> buf)
     {
         int start = 0, end = buf.Count;
@@ -146,7 +161,8 @@ public sealed class TermExtractor
                                || HiraOnly.IsMatch(buf[start].Surface)
                                || (buf[start].Surface.Length == 1 && buf[start].Pos3 == "助数詞可能")))
             start++;
-        while (start < end && TrailStrip.Contains(buf[end - 1].Surface))
+        while (start < end && (TrailStrip.Contains(buf[end - 1].Surface)
+                               || (buf[end - 1].Pos1 == "接尾辞" && TrailSuffixStrip.Contains(buf[end - 1].Surface))))
             end--;
         return buf.GetRange(start, end - start);
     }
@@ -262,7 +278,7 @@ public sealed class TermExtractor
             for (int i = 0; i <= tokens.Count; i++)
             {
                 var m = i < tokens.Count ? tokens[i] : null;
-                if (m != null && IsNounPart(m))
+                if (m != null && (IsNounPart(m) || IsInnerPrefix(buf, m, i + 1 < tokens.Count ? tokens[i + 1] : null)))
                 {
                     buf.Add(m);
                     continue;
