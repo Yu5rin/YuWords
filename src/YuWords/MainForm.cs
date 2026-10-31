@@ -85,6 +85,7 @@ sealed partial class MainForm : Form
         RestoreLayout();
         RestoreSession();
         CheckForUpdatesOnStartup();
+        CheckTeamDictionaryOnStartup();
         if (!store.Settings.Welcomed && store.Registered.Count == 0 && all.Count == 0)
             Shown += (_, _) => RestoreHelper.Welcome(this, store);
         UpdateCounts();
@@ -233,6 +234,7 @@ sealed partial class MainForm : Form
         btnOther.DropDownItems.Add("フォルダ（Obsidian の Vault・テキスト・Word・PowerPoint）...", null, async (_, _) => await LoadFolderAsync());
         btnOther.DropDownItems.Add("Excel・CSV（用語集・文章の列）...", null, async (_, _) => await LoadTableAsync());
         btnOther.DropDownItems.Add("同僚の辞書（共有辞書）...", null, async (_, _) => await LoadShared());
+        btnOther.DropDownItems.Add("チームの辞書の新しい語", null, async (_, _) => await CheckTeamDictionaryAsync(manual: true));
         btnOther.DropDownItems.Add(new ToolStripSeparator());
         btnOther.DropDownItems.Add("メールのテキスト（「---」区切り）...", null, async (_, _) => await LoadMailTextAsync());
         btnCancel.Click += (_, _) => cts?.Cancel();
@@ -377,6 +379,7 @@ sealed partial class MainForm : Form
         menu.Items.Add("IME のよみを採用", null, (_, _) => AdoptImeReading(SelectedItems()));
         menu.Items.Add("短いよみを付ける", null, (_, _) => AddShortReadings());
         menu.Items.Add("このよみをルールにする", null, (_, _) => MakeRules());
+        menu.Items.Add("チームの辞書に足す", null, async (_, _) => await AddToTeamAsync(SelectedItems().SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos))));
         var posMenu = new ToolStripMenuItem("品詞を設定");
         foreach (var p in ReviewItem.PosChoices) posMenu.DropDownItems.Add(p, null, (_, _) => SetPos(p));
         menu.Items.Add(posMenu);

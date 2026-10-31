@@ -1,6 +1,6 @@
 <Project>
   <!-- 版はここで全プロジェクトにそろえる（自動更新・配布物の名前・リリースのタグに使う） -->
   <PropertyGroup>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
   </PropertyGroup>
 </Project>

@@ -41,6 +41,12 @@ public sealed class AppSettings
     /// <summary>自動で調べる時刻（時）</summary>
     public int AutoCheckHour { get; set; } = 9;
 
+    /// <summary>チームの辞書（社内の共有フォルダの CSV）。空なら使わない</summary>
+    public string TeamDictionaryPath { get; set; } = "";
+
+    /// <summary>起動したときに、チームの辞書の新しい語を知らせるか</summary>
+    public bool TeamNotify { get; set; } = true;
+
     /// <summary>起動したときに新しい版を確かめるか</summary>
     public bool UpdateCheck { get; set; } = true;
 
@@ -120,6 +126,16 @@ public sealed class AppStore
     string RegisteredPath => Path.Combine(Dir, "registered.json");
     string HeldPath => Path.Combine(Dir, "held.json");
     string LearnedPath => Path.Combine(Dir, "learned.json");
+    string TeamSeenPath => Path.Combine(Dir, "team_seen.json");
+
+    /// <summary>チームの辞書で、すでに知らせた語（語句 TAB よみ）</summary>
+    public HashSet<string> TeamSeen { get; private set; } = [];
+
+    public void MarkTeamSeen(IEnumerable<string> keys)
+    {
+        foreach (var k in keys) TeamSeen.Add(k);
+        Save(TeamSeenPath, TeamSeen.ToList());
+    }
 
     /// <summary>手で直したよみ（抽出された語句 → よみ）。次回の抽出で同じ語に使う</summary>
     public Dictionary<string, string> Learned { get; private set; } = [];
@@ -152,6 +168,7 @@ public sealed class AppStore
         Registered = Load<List<RegisteredWord>>(RegisteredPath) ?? [];
         Held = (Load<List<HeldWord>>(HeldPath) ?? []).GroupBy(h => h.Word).ToDictionary(g => g.Key, g => g.Last());
         Learned = Load<Dictionary<string, string>>(LearnedPath) ?? [];
+        TeamSeen = (Load<List<string>>(TeamSeenPath) ?? []).ToHashSet();
     }
 
     static T? Load<T>(string path) where T : class

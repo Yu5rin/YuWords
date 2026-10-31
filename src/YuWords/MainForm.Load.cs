@@ -140,7 +140,7 @@ sealed partial class MainForm
     void KeepAddedItems(Dictionary<string, ReviewItem> old)
     {
         var fresh = all.Select(i => i.Source.Word).ToHashSet();
-        all.AddRange(old.Values.Where(o => o.Category is "手入力" or "共有辞書" or "用語集" && !fresh.Contains(o.Source.Word)));
+        all.AddRange(old.Values.Where(o => o.Category is "手入力" or "共有辞書" or "用語集" or "チーム辞書" && !fresh.Contains(o.Source.Word)));
     }
 
     /// <summary>候補から一覧の行を作る。前の一覧での選択・保留にしたときの選択を引き継ぐ</summary>
@@ -248,6 +248,85 @@ sealed partial class MainForm
     /// </summary>
     /// <summary>辞書・用語集の1語（意味は例文の欄に出す。Adjusted は語句を自動で直したので要確認にする）</summary>
     sealed record DictWord(string Reading, string Word, string Pos, string Note = "", bool Adjusted = false, string Extra = "");
+
+    // ===== チームの辞書 =====
+
+    /// <summary>起動したときに、チームの辞書にまだ知らせていない新しい語があれば知らせる</summary>
+    void CheckTeamDictionaryOnStartup()
+    {
+        var s = store.Settings;
+        if (!s.TeamNotify || s.TeamDictionaryPath.Length == 0) return;
+        Shown += async (_, _) =>
+        {
+            await Task.Delay(800);
+            await CheckTeamDictionaryAsync(manual: false);
+        };
+    }
+
+    /// <summary>チームの辞書を読み、新しい語を一覧に足すか尋ねる。manual なら、新しい語が無くても知らせる</summary>
+    async Task CheckTeamDictionaryAsync(bool manual)
+    {
+        if (cts != null) return;
+        var path = store.Settings.TeamDictionaryPath;
+        if (path.Length == 0)
+        {
+            if (manual) MessageBox.Show(this, "チームの辞書の場所が決まっていません。［設定］→［チーム］で、社内の共有フォルダの CSV を選んでください。", "チームの辞書");
+            return;
+        }
+        List<TeamWord> team;
+        try { team = await Task.Run(() => TeamDictionary.Read(path)); }
+        catch (Exception ex)
+        {
+            Log.Error("チームの辞書を読めませんでした", ex);
+            if (manual) MessageBox.Show(this, $"チームの辞書を読めませんでした。\n{ex.Message}", "チームの辞書", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        var inList = all.Select(i => i.Source.Word).ToHashSet();
+        var fresh = TeamDictionary.NewWords(team, store).Where(w => !inList.Contains(w.Word)).ToList();
+        if (fresh.Count == 0)
+        {
+            if (manual) MessageBox.Show(this, $"チームの辞書（{team.Count} 語）に、新しい語はありません。", "チームの辞書");
+            return;
+        }
+        var sample = string.Join("、", fresh.Take(8).Select(w => w.Word)) + (fresh.Count > 8 ? " など" : "");
+        var by = fresh.Select(w => w.AddedBy).Where(b => b.Length > 0).Distinct().Take(3).ToList();
+        var ans = MessageBox.Show(this,
+            $"チームの辞書に新しい語が {fresh.Count} 語あります" + (by.Count > 0 ? $"（{string.Join("・", by)} さんなどが追加）" : "") + $"。\n{sample}\n\n" +
+            "一覧に足しますか？\n［はい］一覧に足す　［いいえ］今回は足さない（次からは知らせない）　［キャンセル］あとで",
+            "チームの辞書", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);
+        if (ans == DialogResult.Cancel) return;
+        store.MarkTeamSeen(fresh.Select(w => TeamDictionary.Key(w.Word, w.Reading)));
+        if (ans == DialogResult.Yes)
+            await AddWordsAsync("チームの辞書", fresh.Select(w => new DictWord(w.Reading, w.Word, w.Pos,
+                w.AddedBy.Length > 0 ? $"{w.AddedBy} さんが {w.AddedAt} に追加" : "")).ToList(), "チーム辞書");
+    }
+
+    /// <summary>選んだ行（よみのある語）をチームの辞書に足す</summary>
+    async Task AddToTeamAsync(IEnumerable<(string Word, string Reading, string Pos)> words)
+    {
+        var path = store.Settings.TeamDictionaryPath;
+        if (path.Length == 0)
+        {
+            MessageBox.Show(this, "チームの辞書の場所が決まっていません。［設定］→［チーム］で、社内の共有フォルダの CSV を選んでください。", "チームの辞書");
+            return;
+        }
+        var list = words.Where(w => w.Reading.Length > 0).ToList();
+        if (list.Count == 0) return;
+        try
+        {
+            int n = await Task.Run(() => TeamDictionary.Add(path, list, Environment.UserName));
+            // 自分で足した語は、次の起動で知らせない
+            store.MarkTeamSeen(list.Select(w => TeamDictionary.Key(w.Word, w.Reading)));
+            Log.Info($"チームの辞書に {n} 語を追加");
+            SetStatus(n > 0 ? $"チームの辞書に {n} 語を足しました（{list.Count - n} 語はすでにありました）。"
+                            : "選んだ語は、すべてチームの辞書にありました。");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("チームの辞書に足せませんでした", ex);
+            MessageBox.Show(this, $"チームの辞書に足せませんでした。\n{ex.Message}", "チームの辞書", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
 
     async Task AddWordsAsync(string name, List<DictWord> words, string category)
     {

@@ -75,6 +75,7 @@ sealed class SettingsForm : Form
         tabs.TabPages.Add(RulesPage());
         tabs.TabPages.Add(BackupPage());
         tabs.TabPages.Add(RegisteredPage());
+        tabs.TabPages.Add(TeamPage());
         tabs.TabPages.Add(UpdatePage());
 
         var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true };
@@ -150,6 +151,39 @@ sealed class SettingsForm : Form
         var page = new TabPage("語の追加分");
         page.Controls.Add(t);
         return page;
+    }
+
+    readonly TextBox txtTeam = new() { Width = Dpi.Scale(360) };
+    readonly CheckBox chkTeamNotify = new() { Text = "起動したときに、チームの辞書の新しい語を知らせる", AutoSize = true, Margin = new Padding(3, 6, 3, 6) };
+
+    TabPage TeamPage()
+    {
+        var s = store.Settings;
+        txtTeam.Text = s.TeamDictionaryPath;
+        chkTeamNotify.Checked = s.TeamNotify;
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10) };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        void Span(Control c) { t.Controls.Add(c); t.SetColumnSpan(c, 2); }
+        Span(Note("チームの辞書（社内の共有フォルダに置く CSV）。同僚と用語をそろえるために、みんなで語を足していきます。\n" +
+                  "語句・よみ・品詞・追加した人・追加日の列で、Excel でも開けます。無いファイルを選ぶと、最初に足したときに作ります。"));
+        txtTeam.Dock = DockStyle.Fill;
+        t.Controls.Add(txtTeam);
+        var browse = new Button { Text = "参照...", AutoSize = true };
+        browse.Click += (_, _) =>
+        {
+            using var dlg = new SaveFileDialog
+            {
+                Title = "チームの辞書（CSV）", FileName = txtTeam.Text.Length > 0 ? Path.GetFileName(txtTeam.Text) : "YuWords_チームの辞書.csv",
+                Filter = "CSV (*.csv)|*.csv", OverwritePrompt = false, CheckFileExists = false,
+            };
+            if (dlg.ShowDialog(this) == DialogResult.OK) txtTeam.Text = dlg.FileName;
+        };
+        t.Controls.Add(browse);
+        Span(chkTeamNotify);
+        Span(Note("語を足すには、確認画面で語を選んで右クリック →「チームの辞書に足す」。\n" +
+                  "新しい語は、起動したときか「ほかから読み込む」→「チームの辞書の新しい語」で一覧に足せます。"));
+        return Page("チーム", t);
     }
 
     readonly CheckBox chkUpdate = new() { Text = "起動したときに新しい版を確かめる（1日に1回まで）", AutoSize = true, Margin = new Padding(3, 6, 3, 6) };
@@ -451,6 +485,8 @@ sealed class SettingsForm : Form
         s.UseGalReadings = chkGal.Checked;
         s.FolderDays = (int)numFolderDays.Value;
         s.FontSize = (float)numFont.Value;
+        s.TeamDictionaryPath = txtTeam.Text.Trim();
+        s.TeamNotify = chkTeamNotify.Checked;
         s.UpdateCheck = chkUpdate.Checked;
         s.UpdateSource = rdoFolder.Checked ? "folder" : "github";
         s.UpdateFolder = txtUpdateFolder.Text.Trim();
