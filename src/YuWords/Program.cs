@@ -90,7 +90,11 @@ static class Program
         if (mailsPath == "settings")
         {
             // 設定画面の各タブを横に並べて保存する
-            using var dlg = new SettingsForm(new AppStore(dir));
+            // 登録済みの語の画面が空にならないよう、架空の語を入れておく
+            var settingsStore = new AppStore(dir);
+            settingsStore.AddRegistered([("XYZ設検課", "えっくすわいぜっとせつけんか", "固有名詞"), ("工符", "こうふ", "名詞"), ("図締", "ずしめ", "名詞"), ("高田", "たかだ", "人名")]);
+            settingsStore.MarkUsed(["工符"], DateTime.Now);
+            using var dlg = new SettingsForm(settingsStore);
             dlg.Shown += (_, _) =>
             {
                 var tabs = dlg.Controls.OfType<TabControl>().First();

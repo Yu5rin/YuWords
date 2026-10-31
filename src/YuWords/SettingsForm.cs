@@ -414,7 +414,7 @@ sealed class SettingsForm : Form
             "最後に見かけた日（見かけていなければ登録した日）から、この日数のあいだ一度も出てこなかった語を出します。");
         var filters = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0) };
         filters.Controls.AddRange([txtRegSearch, chkStale, numStaleDays,
-            new Label { Text = "日以上、文章に出てこない", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }]);
+            new Label { Text = "日以上、送信メールに出てこない", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }]);
 
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(8) };
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -448,7 +448,7 @@ sealed class SettingsForm : Form
         }
         lstRegistered.EndUpdate();
         var shown = list.Count == store.Registered.Count ? "" : $"（表示 {list.Count} 語）";
-        var scan = store.Settings.LastUsageScan is { } s ? $"　文章を最後に調べた日: {s:yyyy/MM/dd}" : "";
+        var scan = store.Settings.LastUsageScan is { } s ? $"　送信メールを最後に調べた日: {s:yyyy/MM/dd}" : "";
         lblRegistered.Text = $"YuWords で登録（出力）した語: {store.Registered.Count} 語{shown}。ここでの操作はすぐに保存されます。{scan}";
         if (chkStale.Checked && store.Settings.LastUsageScan == null)
             lblRegistered.Text += "\nまだ文章を調べていません。Outlook の送信メールを読み込むと、登録済みの語が出てくるかを調べます。";
