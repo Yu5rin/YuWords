@@ -47,7 +47,11 @@ public static class DocumentSources
 
     // ===== フォルダ（Obsidian Vault・テキスト） =====
 
-    public static readonly string[] DefaultExtensions = [".md", ".txt", ".docx", ".pptx"];
+    /// <summary>
+    /// 読む文書の種類。.vtt は Teams 会議の文字起こし、.html・.htm は Teams のチャットなどを保存したもの、
+    /// .mht・.mhtml は OneNote の「単一ファイル Web ページ」でエクスポートしたもの
+    /// </summary>
+    public static readonly string[] DefaultExtensions = [".md", ".txt", ".docx", ".pptx", ".vtt", ".html", ".htm", ".mht", ".mhtml"];
 
     /// <summary>
     /// フォルダ以下の .md / .txt / .docx / .pptx を1ファイル1文書として読む。
@@ -64,32 +68,186 @@ public static class DocumentSources
             ct.ThrowIfCancellationRequested();
             if (Path.GetFileName(path).StartsWith("~$")) continue;
             if (modifiedAfter is { } after && File.GetLastWriteTime(path) < after) continue;
-            var ext = Path.GetExtension(path).ToLowerInvariant();
-            string text;
-            try
-            {
-                text = ext switch
-                {
-                    ".docx" => ReadDocx(path),
-                    ".pptx" => ReadPptx(path),
-                    _ => ReadText(path),
-                };
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException
-                                          or System.Xml.XmlException)
-            {
-                continue;   // 開けない・暗号化された・壊れたファイルは飛ばす
-            }
-            if (ext == ".md")
-                text = StripMarkdown(text);
-            // ファイル名（ノートの題名）も本文と同じく扱う
-            var lines = SplitLines(text);
-            lines.Insert(0, Path.GetFileNameWithoutExtension(path));
+            if (ReadDocument(path) is not { } lines) continue;   // 開けない・暗号化された・壊れたファイルは飛ばす
             docs.Add(lines);
             if (docs.Count % 50 == 0) progress?.Report(docs.Count);
         }
         progress?.Report(docs.Count);
         return docs;
+    }
+
+    /// <summary>貼り付けた文章を、空行で区切られたまとまり（段落）ごとの文書にする</summary>
+    public static List<List<string>> Paragraphs(string text)
+    {
+        var docs = new List<List<string>>();
+        var cur = new List<string>();
+        foreach (var raw in text.ReplaceLineEndings("\n").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length > 0) { cur.Add(line); continue; }
+            if (cur.Count > 0) { docs.Add(cur); cur = []; }
+        }
+        if (cur.Count > 0) docs.Add(cur);
+        return docs;
+    }
+
+    /// <summary>
+    /// 1つのファイルを、ファイル名（ノートの題名）を先頭にした行のリストとして読む。開けない・壊れているときは null
+    /// </summary>
+    public static List<string>? ReadDocument(string path)
+    {
+        var ext = Path.GetExtension(path).ToLowerInvariant();
+        string text;
+        try
+        {
+            text = ext switch
+            {
+                ".docx" => ReadDocx(path),
+                ".pptx" => ReadPptx(path),
+                ".md" => StripMarkdown(ReadText(path)),
+                ".vtt" => StripVtt(ReadText(path)),
+                ".html" or ".htm" => HtmlToText(ReadText(path)),
+                ".mht" or ".mhtml" => ReadMht(path),
+                _ => ReadText(path),
+            };
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException
+                                      or System.Xml.XmlException or FormatException)
+        {
+            return null;
+        }
+        var lines = SplitLines(text);
+        lines.Insert(0, Path.GetFileNameWithoutExtension(path));
+        return lines;
+    }
+
+    static readonly Regex VttVoice = new(@"<v(?:\.[^ >]*)?\s+([^>]+)>", RegexOptions.Compiled);
+    static readonly Regex Tag = new(@"<[^>]+>", RegexOptions.Compiled);
+
+    /// <summary>
+    /// WebVTT（Teams 会議の文字起こし）から話した内容を取り出す。時刻の行・番号の行・NOTE は捨て、
+    /// 話した人の名前（&lt;v 山田 太郎&gt;）は人名の候補になるよう、内容とは別の行にする
+    /// </summary>
+    public static string StripVtt(string vtt)
+    {
+        var sb = new StringBuilder();
+        bool note = false;
+        string? lastSpeaker = null;
+        foreach (var raw in vtt.ReplaceLineEndings("\n").Split('\n'))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0) { note = false; continue; }
+            if (note || line.StartsWith("WEBVTT") || line.Contains("-->") || line.All(char.IsDigit)) continue;
+            if (line.StartsWith("NOTE")) { note = true; continue; }
+            // Teams は番号の代わりに「GUID/数字」の行を入れる
+            if (Regex.IsMatch(line, @"^[0-9a-fA-F-]{20,}(/\d+(-\d+)?)?$")) continue;
+            if (VttVoice.Match(line) is { Success: true } v)
+            {
+                var speaker = v.Groups[1].Value.Trim();
+                if (speaker != lastSpeaker) sb.Append(speaker).Append('\n');
+                lastSpeaker = speaker;
+            }
+            sb.Append(System.Net.WebUtility.HtmlDecode(Tag.Replace(line, ""))).Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    static readonly Regex HtmlDrop = new(@"<(script|style|head)\b.*?</\1\s*>", RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.IgnoreCase);
+    static readonly Regex HtmlBreak = new(@"<(br|/p|/div|/li|/tr|/h[1-6]|/td|/th|/title)\b[^>]*>", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    /// <summary>HTML から文字だけを取り出す（段落・改行・表のセルは行に分ける）</summary>
+    public static string HtmlToText(string html)
+    {
+        var s = HtmlDrop.Replace(html, " ");
+        s = HtmlBreak.Replace(s, "\n");
+        s = Tag.Replace(s, " ");
+        return System.Net.WebUtility.HtmlDecode(s).Replace('\u00a0', ' ');
+    }
+
+    /// <summary>
+    /// MHT（OneNote などの「単一ファイル Web ページ」）から、HTML の部分を取り出して文字にする。
+    /// quoted-printable と base64 の両方と、Content-Type の charset に対応する
+    /// </summary>
+    public static string ReadMht(string path)
+    {
+        var raw = File.ReadAllText(path, Encoding.Latin1);   // まずバイトのまま読み、部分ごとに文字コードを当てる
+        return MhtToText(raw);
+    }
+
+    internal static string MhtToText(string raw)
+    {
+        var text = new StringBuilder();
+        foreach (var part in MimeParts(raw))
+        {
+            var (headers, body) = part;
+            var type = Header(headers, "Content-Type");
+            if (!type.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) && !type.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase)) continue;
+            var bytes = Header(headers, "Content-Transfer-Encoding").ToLowerInvariant() switch
+            {
+                "quoted-printable" => DecodeQuotedPrintable(body),
+                "base64" => Convert.FromBase64String(Regex.Replace(body, @"\s", "")),
+                _ => Encoding.Latin1.GetBytes(body),
+            };
+            var charset = Regex.Match(type, @"charset=""?([^"";\s]+)", RegexOptions.IgnoreCase) is { Success: true } m ? m.Groups[1].Value : "utf-8";
+            Encoding enc;
+            try
+            {
+                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                enc = Encoding.GetEncoding(charset);
+            }
+            catch (ArgumentException) { enc = Encoding.UTF8; }
+            var s = enc.GetString(bytes);
+            text.Append(type.StartsWith("text/html", StringComparison.OrdinalIgnoreCase) ? HtmlToText(s) : s).Append('\n');
+        }
+        return text.ToString();
+    }
+
+    /// <summary>MIME の部分（ヘッダーと本文）。multipart でなければ全体を1つの部分とする</summary>
+    static IEnumerable<(string Headers, string Body)> MimeParts(string raw)
+    {
+        raw = raw.ReplaceLineEndings("\n");
+        int split = raw.IndexOf("\n\n", StringComparison.Ordinal);
+        if (split < 0) yield break;
+        var top = raw[..split];
+        var boundary = Regex.Match(top, @"boundary=""?([^"";\n]+)""?", RegexOptions.IgnoreCase);
+        if (!boundary.Success)
+        {
+            yield return (top, raw[(split + 2)..]);
+            yield break;
+        }
+        foreach (var chunk in raw.Split("--" + boundary.Groups[1].Value).Skip(1))
+        {
+            if (chunk.StartsWith("--")) break;   // 終わりの区切り
+            var c = chunk.TrimStart('\n');
+            int sep = c.IndexOf("\n\n", StringComparison.Ordinal);
+            if (sep < 0) continue;
+            yield return (c[..sep], c[(sep + 2)..]);
+        }
+    }
+
+    static string Header(string headers, string name)
+    {
+        // 折り返された行（次の行が空白で始まる）をつなげてから探す
+        var unfolded = Regex.Replace(headers, @"\n[ \t]+", " ");
+        var m = Regex.Match(unfolded, $@"^{Regex.Escape(name)}:\s*(.+)$", RegexOptions.IgnoreCase | RegexOptions.Multiline);
+        return m.Success ? m.Groups[1].Value.Trim() : "";
+    }
+
+    static byte[] DecodeQuotedPrintable(string s)
+    {
+        var bytes = new List<byte>(s.Length);
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] == '=' && i + 1 < s.Length && s[i + 1] == '\n') { i++; continue; }   // 行の折り返し
+            if (s[i] == '=' && i + 2 < s.Length && Uri.IsHexDigit(s[i + 1]) && Uri.IsHexDigit(s[i + 2]))
+            {
+                bytes.Add(Convert.ToByte(s.Substring(i + 1, 2), 16));
+                i += 2;
+                continue;
+            }
+            bytes.Add((byte)s[i]);
+        }
+        return bytes.ToArray();
     }
 
     static IEnumerable<string> EnumerateFiles(string folder, HashSet<string> exts)

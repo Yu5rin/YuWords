@@ -87,7 +87,7 @@ sealed partial class MainForm
     {
         using var dlg = new FolderBrowserDialog
         {
-            Description = "取り込むフォルダ（Obsidian の Vault など）。中の .md・.txt・.docx・.pptx を1ファイル1文書として読みます",
+            Description = "取り込むフォルダ（Obsidian の Vault など）。中の .md・.txt・.docx・.pptx・.vtt・.html・.mht を1ファイル1文書として読みます",
             UseDescriptionForTitle = true,
             InitialDirectory = Directory.Exists(store.Settings.LastFolder) ? store.Settings.LastFolder : "",
         };
@@ -101,6 +101,47 @@ sealed partial class MainForm
     public Task LoadFolderAsync(string folder) =>
         LoadAsync(new Source(Path.GetFileName(folder), "文書", (p, ct) => DocumentSources.ReadFolder(folder, null, p, ct,
             store.Settings.FolderDays > 0 ? DateTime.Now.AddDays(-store.Settings.FolderDays) : null)));
+
+    /// <summary>ファイルを選んで読む（Teams 会議の文字起こし .vtt、OneNote の .mht、Teams のチャットを保存した .html、Word など）</summary>
+    async Task LoadFilesAsync()
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "取り込むファイル（複数選べます）",
+            Multiselect = true,
+            Filter = "文書 (*.vtt;*.docx;*.pptx;*.md;*.txt;*.html;*.htm;*.mht;*.mhtml)|*.vtt;*.docx;*.pptx;*.md;*.txt;*.html;*.htm;*.mht;*.mhtml|" +
+                     "Teams 会議の文字起こし (*.vtt)|*.vtt|OneNote のエクスポート (*.mht;*.mhtml;*.docx)|*.mht;*.mhtml;*.docx|すべてのファイル (*.*)|*.*",
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        var files = dlg.FileNames;
+        var name = files.Length == 1 ? Path.GetFileName(files[0]) : $"{Path.GetFileName(files[0])} ほか {files.Length - 1} ファイル";
+        await LoadAsync(new Source(name, "文書", (p, ct) =>
+        {
+            var docs = new List<List<string>>();
+            foreach (var f in files)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (DocumentSources.ReadDocument(f) is { } d) docs.Add(d);
+                p.Report(docs.Count);
+            }
+            return docs;
+        }));
+    }
+
+    /// <summary>クリップボードの文章を読む（空行で区切られたまとまりを1つの文書として数える）</summary>
+    async Task LoadClipboardAsync()
+    {
+        string text;
+        try { text = Clipboard.ContainsText() ? Clipboard.GetText() : ""; }
+        catch (Exception) { text = ""; }
+        var docs = DocumentSources.Paragraphs(text);
+        if (docs.Count == 0)
+        {
+            MessageBox.Show(this, "クリップボードに文章がありません。\nTeams のチャット・OneNote・PDF などの文章を選んでコピーしてから、もう一度選んでください。", "クリップボードの文章");
+            return;
+        }
+        await LoadAsync(new Source("クリップボードの文章", "段落", (_, _) => docs));
+    }
 
     async Task LoadTableAsync()
     {

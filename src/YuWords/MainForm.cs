@@ -253,6 +253,8 @@ sealed partial class MainForm : Form
                 : "前回以降の新しいメールだけ読み込む（一度読み込むと使えます）";
         };
         btnOther.DropDownItems.Add("フォルダ（Obsidian の Vault・テキスト・Word・PowerPoint）...", null, async (_, _) => await LoadFolderAsync());
+        btnOther.DropDownItems.Add("ファイルを選ぶ（Teams の文字起こし・OneNote・Word など）...", null, async (_, _) => await LoadFilesAsync());
+        btnOther.DropDownItems.Add("クリップボードの文章", null, async (_, _) => await LoadClipboardAsync());
         btnOther.DropDownItems.Add("Excel・CSV（用語集・文章の列）...", null, async (_, _) => await LoadTableAsync());
         btnOther.DropDownItems.Add("同僚の辞書（共有辞書）...", null, async (_, _) => await LoadShared());
         btnOther.DropDownItems.Add("チームの辞書の新しい語", null, async (_, _) => await CheckTeamDictionaryAsync(manual: true));
