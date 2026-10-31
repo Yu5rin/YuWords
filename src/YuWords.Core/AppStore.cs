@@ -78,7 +78,8 @@ public sealed class UiState
 }
 
 /// <summary>登録済みの語1つ分（registered.json）</summary>
-public sealed record RegisteredWord(string Word, string Reading, string Pos, DateTime RegisteredAt);
+/// <param name="Target">登録先。MSIME（Microsoft IME。既定）か Google（Google 日本語入力に書き出した語）</param>
+public sealed record RegisteredWord(string Word, string Reading, string Pos, DateTime RegisteredAt, string Target = "MSIME");
 
 /// <summary>
 /// %APPDATA%\YuWords\ の永続データ。
@@ -185,8 +186,13 @@ public sealed class AppStore
 
     HashSet<(string, string)>? registeredSet;
 
+    /// <summary>Microsoft IME に登録（出力）済みか。一覧の「登録済み」はこれで判定する</summary>
     public bool IsRegistered(string word, string reading) =>
-        (registeredSet ??= Registered.Select(r => (r.Word, r.Reading)).ToHashSet()).Contains((word, reading));
+        (registeredSet ??= Registered.Where(r => r.Target == "MSIME").Select(r => (r.Word, r.Reading)).ToHashSet()).Contains((word, reading));
+
+    /// <summary>指定した登録先に登録（書き出し）済みか</summary>
+    public bool IsRegisteredIn(string target, string word, string reading) =>
+        Registered.Any(r => r.Target == target && r.Word == word && r.Reading == reading);
 
     /// <summary>一覧の保留の状態を held.json に合わせる（保留中の語は今の選択で、保留を外した語は消す）。一覧に無い語はそのまま</summary>
     public void SyncHeld(IEnumerable<ReviewItem> items)
@@ -215,14 +221,14 @@ public sealed class AppStore
     /// 登録済みリストに追加し、dictionary_backup.txt を作り直す。
     /// 同じ語・よみが既にあれば追加しない。戻り値は新しく追加した数
     /// </summary>
-    public int AddRegistered(IEnumerable<(string Word, string Reading, string Pos)> words)
+    public int AddRegistered(IEnumerable<(string Word, string Reading, string Pos)> words, string target = "MSIME")
     {
         int added = 0;
         var now = DateTime.Now;
         foreach (var (w, r, p) in words)
         {
-            if (r.Length == 0 || IsRegistered(w, r)) continue;
-            Registered.Add(new RegisteredWord(w, r, p, now));
+            if (r.Length == 0 || IsRegisteredIn(target, w, r)) continue;
+            Registered.Add(new RegisteredWord(w, r, p, now, target));
             added++;
         }
         registeredSet = null;
@@ -292,7 +298,7 @@ public sealed class AppStore
         var dir = Path.GetDirectoryName(BackupFile);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         var tmp = Path.Combine(Dir, "dictionary_backup.new");
-        OutputWriters.WriteImeText(tmp, Registered.Select(r => (r.Reading, r.Word, r.Pos)));
+        OutputWriters.WriteImeText(tmp, Registered.DistinctBy(r => (r.Word, r.Reading)).Select(r => (r.Reading, r.Word, r.Pos)));
         if (File.Exists(BackupFile))
         {
             if (File.ReadAllBytes(BackupFile).AsSpan().SequenceEqual(File.ReadAllBytes(tmp)))

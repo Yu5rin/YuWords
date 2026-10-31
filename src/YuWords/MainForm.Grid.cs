@@ -112,6 +112,7 @@ sealed partial class MainForm
             Col.Reading when i.Source.ReadingSource.Length > 0 && i.Reading == i.Source.Reading => $"よみは{i.Source.ReadingSource}のふりがなです",
             Col.Stars => "登録する価値の目安（IME で変換できない語・よく使う語ほど高い）",
             _ when i.InImeDictionary => "IME のユーザー辞書に既にある語です",
+            _ when store.IsRegisteredIn(GoogleIme.Target, i.Word, i.Reading) && !i.IsRegistered => "Google 日本語入力には書き出し済みです",
             _ when i.IsRegistered => "以前に登録した語です",
             _ => "",
         };
@@ -334,7 +335,7 @@ sealed partial class MainForm
         int chk = all.Count(i => i.Register && !i.Held);
         int unreviewed = all.Count(i => !i.Reviewed && !i.IsRegistered && !i.Held);
         counts.Text = $"表示 {view.Count} / 候補 {all.Count} 語　未確認 {unreviewed} 語　登録チェック {chk} 語";
-        btnExportIme.Enabled = btnRegister.Enabled = chk > 0 && cts == null;
+        btnExportIme.Enabled = btnRegister.Enabled = btnGoogle.Enabled = chk > 0 && cts == null;
         btnExportCsv.Enabled = all.Count > 0 && cts == null;
     }
 

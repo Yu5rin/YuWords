@@ -91,6 +91,41 @@ sealed partial class MainForm
             OpenDictionaryTool();
     }
 
+    /// <summary>
+    /// 登録チェックの付いた語を Google 日本語入力に登録する。Google には外から登録する仕組みが無いので、
+    /// Google 形式のファイルを書き出して辞書ツールを開き、インポートしてもらう
+    /// </summary>
+    void RegisterGoogle()
+    {
+        grid.EndEdit();
+        var items = all.Where(i => i.Register && !i.Held && i.Reading.Length > 0).ToList();
+        if (items.Count == 0) return;
+        try
+        {
+            var (path, n) = GoogleIme.Export(store.Dir, items.SelectMany(i => i.Entries()));
+            store.AddRegistered(items.SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos)), GoogleIme.Target);
+            try { Clipboard.SetText(path); } catch (Exception) { }
+            Log.Info($"Google 日本語入力用に {n} 語を書き出し");
+            var error = GoogleIme.OpenDictionaryTool();
+            SetStatus($"Google 日本語入力用に {n} 語を書き出しました。辞書ツールでインポートしてください。");
+            MessageBox.Show(this,
+                $"Google 日本語入力用に {n} 語を書き出しました。\n{path}\n（このファイルの場所をクリップボードにコピーしました）\n\n" +
+                (error == null
+                    ? "開いた Google 日本語入力の辞書ツールで、次のように取り込んでください。\n" +
+                      "  ［管理］→［新規辞書にインポート］（または［選択した辞書にインポート］）\n" +
+                      "  → ファイル名の欄に貼り付け（Ctrl+V）→［開く］\n" +
+                      "  → 形式は「自動検出」のままで［インポート］"
+                    : $"辞書ツールを開けませんでした（{error}）。Google 日本語入力のプロパティから辞書ツールを開いて、このファイルをインポートしてください。") +
+                "\n\nMicrosoft IME にも登録する場合は、続けて「IME に登録」を押してください（登録チェックは残してあります）。",
+                "Google 日本語入力に登録", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Google 日本語入力用の書き出しに失敗", ex);
+            MessageBox.Show(this, $"書き出せませんでした。\n{ex.Message}", "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
     void OpenDictionaryTool()
     {
         var tool = ImeDictionary.DictionaryToolPath();

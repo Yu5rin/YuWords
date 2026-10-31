@@ -34,6 +34,7 @@ sealed partial class MainForm : Form
     readonly CheckBox chkRegistered = new() { Text = "登録済みの語も表示", AutoSize = true };
     readonly Button btnRegister = new() { Text = "IME に登録", AutoSize = true, Font = new Font("Yu Gothic UI", 9f, FontStyle.Bold) };
     readonly Button btnExportIme = new() { Text = "辞書ファイルに出力...", AutoSize = true };
+    readonly Button btnGoogle = new() { Text = "Google 日本語入力に登録", AutoSize = true };
     readonly Button btnExportCsv = new() { Text = "CSV に出力...", AutoSize = true };
     readonly ToolStripStatusLabel status = new() { Spring = true, TextAlign = ContentAlignment.MiddleLeft };
     readonly ToolStripStatusLabel counts = new();
@@ -255,7 +256,9 @@ sealed partial class MainForm : Form
             AutoSize = true, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Anchor = AnchorStyles.Right,
             Margin = new Padding(0),
         };
-        buttons.Controls.AddRange([btnRegister, btnExportIme, btnExportCsv]);
+        buttons.Controls.AddRange([btnRegister, btnGoogle, btnExportIme, btnExportCsv]);
+        btnGoogle.Visible = GoogleIme.IsInstalled;   // Google 日本語入力が入っているときだけ出す
+        btnGoogle.Click += (_, _) => RegisterGoogle();
         // 下の欄: 左に凡例、右にボタン。高さは中身（文字の大きさ・拡大率）に合わせる
         var bottom = new TableLayoutPanel
         {

@@ -75,9 +75,12 @@ public static class ImeRegistration
     {
         if (!Enabled) throw new InvalidOperationException("IME のユーザー辞書を直接使う設定が OFF です（［設定］→［抽出］）。");
         int n = 0;
-        using (var dic = ImeDictionary.Open())
-            foreach (var w in words)
-                if (dic.Delete(w.Reading, w.Word, w.Pos)) n++;
+        // Google 日本語入力に書き出した語は、Google の辞書ツールで消してもらう（ここでは一覧から外すだけ）
+        var msime = words.Where(w => w.Target == "MSIME").ToList();
+        if (msime.Count > 0)
+            using (var dic = ImeDictionary.Open())
+                foreach (var w in msime)
+                    if (dic.Delete(w.Reading, w.Word, w.Pos)) n++;
         store.RemoveRegistered(words);
         ImeLookup.ForgetConversions(words.Select(w => w.Reading));
         return n;

@@ -79,6 +79,10 @@ public static class Diagnostics
             ? (CheckStatus.OK, p)
             : (CheckStatus.Warning, "見つかりません（IME のメニューから開いてください）"));
 
+        Add("Google 日本語入力", () => GoogleIme.ToolPath() is { } g
+            ? (CheckStatus.OK, $"辞書ツールあり（{g}）。「Google 日本語入力に登録」で書き出して取り込めます")
+            : (CheckStatus.OK, "入っていません（Microsoft IME だけを使います）"));
+
         Add("設定フォルダ", () =>
         {
             var test = Path.Combine(store.Dir, $"write_test_{Guid.NewGuid():N}.tmp");

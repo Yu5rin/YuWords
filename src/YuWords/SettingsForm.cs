@@ -289,6 +289,7 @@ sealed class SettingsForm : Form
         lstRegistered.Columns.Add("よみ", 150);
         lstRegistered.Columns.Add("品詞", 70);
         lstRegistered.Columns.Add("登録日", 90);
+        lstRegistered.Columns.Add("登録先", 90);
         ReloadRegistered();
 
         var del = new Button { Text = "IME から削除して一覧から外す", AutoSize = true };
@@ -323,7 +324,8 @@ sealed class SettingsForm : Form
         lstRegistered.BeginUpdate();
         lstRegistered.Items.Clear();
         foreach (var r in store.Registered.OrderByDescending(r => r.RegisteredAt))
-            lstRegistered.Items.Add(new ListViewItem([r.Word, r.Reading, r.Pos, r.RegisteredAt.ToString("yyyy/MM/dd")]) { Tag = r });
+            lstRegistered.Items.Add(new ListViewItem([r.Word, r.Reading, r.Pos, r.RegisteredAt.ToString("yyyy/MM/dd"),
+                r.Target == GoogleIme.Target ? "Google" : "Microsoft IME"]) { Tag = r });
         lstRegistered.EndUpdate();
         lblRegistered.Text = $"YuWords で登録（出力）した語: {store.Registered.Count} 語。ここでの操作はすぐに保存されます。";
     }
