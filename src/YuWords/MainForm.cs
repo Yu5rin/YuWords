@@ -202,6 +202,14 @@ sealed partial class MainForm : Form
         btnHelp.DropDownItems.Add("環境チェック...", null, async (_, _) => await RunDiagnosticsAsync());
         btnHelp.DropDownItems.Add("更新を確認...", null, async (_, _) => await CheckForUpdatesAsync(manual: true));
         btnHelp.DropDownItems.Add("ファイルから更新...", null, async (_, _) => await UpdateFromFileAsync());
+        var rollback = new ToolStripMenuItem("前の版に戻す...", null, (_, _) => RollBack());
+        btnHelp.DropDownItems.Add(rollback);
+        btnHelp.DropDownOpening += (_, _) =>
+        {
+            var previous = Updater.PreviousVersion();
+            rollback.Enabled = previous != null;
+            rollback.Text = previous != null ? $"前の版（v{previous}）に戻す..." : "前の版に戻す（控えなし）";
+        };
         btnHelp.DropDownItems.Add("ログのフォルダを開く", null, (_, _) =>
         {
             if (Log.Directory != null) Process.Start("explorer.exe", $"\"{Log.Directory}\"");

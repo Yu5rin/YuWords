@@ -166,7 +166,7 @@ sealed partial class MainForm
         try
         {
             var log = Path.Combine(Updater.UpdateDir, "apply.log");
-            var script = Updater.WriteApplyScript(staged, appDir, Environment.ProcessId, log);
+            var script = Updater.WriteApplyScript(staged, appDir, Environment.ProcessId, log, backup: true, Updater.CurrentVersion);
             Log.Info($"v{info.Version} に差し替えます（{script}）");
             Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"\"{script}\"\"")
             {
@@ -184,22 +184,71 @@ sealed partial class MainForm
         Close();   // 途中の一覧は閉じるときに保存される
     }
 
+    /// <summary>控えてある前の版に戻す（更新した版がうまく動かないとき）</summary>
+    void RollBack()
+    {
+        if (cts != null) return;
+        var previous = Updater.PreviousVersion();
+        var appDir = AppContext.BaseDirectory.TrimEnd('\\');
+        if (previous == null)
+        {
+            MessageBox.Show(this, "戻せる前の版がありません（更新したことがないか、控えが消されています）。", "前の版に戻す");
+            return;
+        }
+        if (Updater.IsDevelopmentBuild(appDir))
+        {
+            MessageBox.Show(this, "開発中の実行なので、戻すことはしません。", "前の版に戻す");
+            return;
+        }
+        if (MessageBox.Show(this, $"今の v{Updater.CurrentVersion} から、前の v{previous} に戻します。YuWords を閉じて差し替え、起動し直します。\n" +
+                "（設定・登録済みの語・途中の一覧はそのままです）",
+                "前の版に戻す", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
+            return;
+        try
+        {
+            var log = Path.Combine(Updater.UpdateDir, "apply.log");
+            var script = Updater.WriteApplyScript(Updater.PreviousDir, appDir, Environment.ProcessId, log, backup: false, startArgument: "--rolled-back");
+            Log.Info($"v{previous} に戻します");
+            Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"\"{script}\"\"") { UseShellExecute = false, CreateNoWindow = true });
+            // 戻した版を次の確認で勧めないよう、今の版を「知らせない」にする
+            store.Settings.SkippedVersion = Updater.CurrentVersion.ToString();
+            store.SaveSettings();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"戻せませんでした。\n{ex.Message}", "前の版に戻す", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+        Close();
+    }
+
     /// <summary>更新のあとに起動し直したときの知らせ</summary>
     public void ShowUpdateResult(string arg)
     {
         Shown += (_, _) =>
         {
-            if (arg == "--updated")
+            if (arg is "--updated" or "--rolled-back")
             {
-                Log.Info($"v{Updater.CurrentVersion} に更新しました");
-                SetStatus($"v{Updater.CurrentVersion} に更新しました。");
-                try { Directory.Delete(Updater.UpdateDir, true); } catch (Exception) { }
+                bool rolledBack = arg == "--rolled-back";
+                Log.Info(rolledBack ? $"v{Updater.CurrentVersion} に戻しました" : $"v{Updater.CurrentVersion} に更新しました");
+                var previous = Updater.PreviousVersion();
+                SetStatus(rolledBack ? $"v{Updater.CurrentVersion} に戻しました。"
+                    : $"v{Updater.CurrentVersion} に更新しました。" + (previous != null ? $"うまく動かないときは「使い方」→「前の版に戻す」で v{previous} に戻せます。" : ""));
+                // 取ってきた配布物と展開したものは消す（前の版の控えは残す）
+                try
+                {
+                    foreach (var d in Directory.GetDirectories(Updater.UpdateDir, "staging-*")) Directory.Delete(d, true);
+                    foreach (var f in Directory.GetFiles(Updater.UpdateDir, "*.zip")) File.Delete(f);
+                }
+                catch (Exception) { }
+                if (rolledBack) { store.Settings.SkippedVersion = ""; store.SaveSettings(); }
             }
             else
             {
                 Log.Error("差し替えに失敗しました（apply.log を見てください）");
                 MessageBox.Show(this,
-                    $"更新の差し替えに失敗しました（ファイルが使用中だった可能性があります）。もう一度「使い方」→「更新を確認...」を試してください。\n\n記録: {Path.Combine(Updater.UpdateDir, "apply.log")}",
+                    $"更新の差し替えに失敗したので、元の版（v{Updater.CurrentVersion}）のまま起動しました（ファイルが使用中だった可能性があります）。\n" +
+                    $"もう一度「使い方」→「更新を確認...」を試してください。\n\n記録: {Path.Combine(Updater.UpdateDir, "apply.log")}",
                     "更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         };

@@ -76,7 +76,7 @@ static class Program
             return;
         }
         var main = new MainForm(store);
-        if (args.FirstOrDefault(a => a is "--updated" or "--update-failed") is { } updateArg)
+        if (args.FirstOrDefault(a => a is "--updated" or "--update-failed" or "--rolled-back") is { } updateArg)
             main.ShowUpdateResult(updateArg);   // 更新のあとに起動し直したとき
         if (args.Contains(MainForm.NewOnlyArgument)) main.LoadNewOnShown();   // 通知から開いたとき
         Application.Run(main);

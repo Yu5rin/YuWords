@@ -241,13 +241,28 @@ public static class Updater
         catch (Exception) { return false; }
     }
 
+    /// <summary>差し替える前の版の控え（「前の版に戻す」と、差し替えに失敗したときに使う）</summary>
+    public static string PreviousDir => Path.Combine(UpdateDir, "previous");
+
+    const string VersionFile = "yuwords_version.txt";
+
+    /// <summary>控えてある前の版（無ければ null）</summary>
+    public static Version? PreviousVersion()
+    {
+        var f = Path.Combine(PreviousDir, VersionFile);
+        return File.Exists(f) && File.Exists(Path.Combine(PreviousDir, "YuWords.exe")) ? ParseVersion(File.ReadAllText(f)) : null;
+    }
+
     /// <summary>
     /// アプリが閉じるのを待って、展開した新しい版をアプリのフォルダに上書きし、起動し直すバッチを作る。
+    /// backup なら上書きの前に今の版を控え、上書きに失敗したら控えから元に戻す。
     /// 会社の PC でも動くよう、Windows に標準で入っている cmd と robocopy だけを使う
     /// </summary>
-    public static string WriteApplyScript(string stagedDir, string appDir, int pid, string logPath)
+    public static string WriteApplyScript(string stagedDir, string appDir, int pid, string logPath,
+        bool backup = true, Version? currentVersion = null, string startArgument = "--updated")
     {
-        var lines = new[]
+        var exe = Path.Combine(appDir, "YuWords.exe");
+        var lines = new List<string>
         {
             "@echo off",
             "setlocal",
@@ -257,13 +272,29 @@ public static class Updater
             "  ping -n 2 127.0.0.1 >nul",
             "  goto wait",
             ")",
-            $"robocopy \"{stagedDir}\" \"{appDir}\" /E /R:10 /W:2 /NP /NFL /NDL >> \"{logPath}\"",
-            "if %ERRORLEVEL% GEQ 8 (",
-            $"  start \"\" \"{Path.Combine(appDir, "YuWords.exe")}\" --update-failed",
-            "  exit /b 1",
-            ")",
-            $"start \"\" \"{Path.Combine(appDir, "YuWords.exe")}\" --updated",
         };
+        if (backup)
+        {
+            lines.AddRange(
+            [
+                // 今の版を控える。控えられなければ差し替えない
+                $"if exist \"{PreviousDir}\" rmdir /s /q \"{PreviousDir}\"",
+                $"robocopy \"{appDir}\" \"{PreviousDir}\" /E /R:3 /W:1 /NP /NFL /NDL >> \"{logPath}\"",
+                "if %ERRORLEVEL% GEQ 8 (",
+                $"  start \"\" \"{exe}\" --update-failed",
+                "  exit /b 1",
+                ")",
+                $"> \"{Path.Combine(PreviousDir, VersionFile)}\" echo {currentVersion ?? CurrentVersion}",
+            ]);
+        }
+        lines.Add($"robocopy \"{stagedDir}\" \"{appDir}\" /E /XF {VersionFile} /R:10 /W:2 /NP /NFL /NDL >> \"{logPath}\"");
+        lines.Add("if %ERRORLEVEL% GEQ 8 (");
+        if (backup)
+            lines.Add($"  robocopy \"{PreviousDir}\" \"{appDir}\" /E /XF {VersionFile} /R:10 /W:2 /NP /NFL /NDL >> \"{logPath}\"");   // 元に戻す
+        lines.Add($"  start \"\" \"{exe}\" --update-failed");
+        lines.Add("  exit /b 1");
+        lines.Add(")");
+        lines.Add($"start \"\" \"{exe}\" {startArgument}");
         var text = string.Join("\r\n", lines) + "\r\n";
         var path = Path.Combine(UpdateDir, "apply.cmd");
         Directory.CreateDirectory(UpdateDir);

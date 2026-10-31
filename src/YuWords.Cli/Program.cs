@@ -56,6 +56,14 @@ static class Program
                     // update-check [今の版] … GitHub に新しい版があるかを確かめる（取ってはこない）
                     var current = rest.Count > 0 ? Version.Parse(rest[0]) : Updater.CurrentVersion;
                     var info = Updater.CheckGitHubAsync(current).GetAwaiter().GetResult();
+                    if (info != null && args.Contains("--download"))
+                    {
+                        // 取ってきて SHA256 を確かめ、展開するところまで（差し替えはしない。確認用の作業フォルダに）
+                        Updater.UpdateDir = Path.Combine(Path.GetTempPath(), "YuWords-update-check");
+                        var zip = Updater.DownloadAsync(info).GetAwaiter().GetResult();
+                        var staged = Updater.Extract(zip, info.Version);
+                        Console.WriteLine($"取ってきて確かめました（SHA256 一致）: {zip}\n展開先: {staged}");
+                    }
                     Console.WriteLine(info == null ? $"新しい版はありません（v{current}）"
                         : $"新しい版 v{info.Version}\n  {info.Location}\n  {info.Size:N0} バイト\n  SHA256 {info.Sha256 ?? "不明"}\n{info.Notes}");
                     return 0;

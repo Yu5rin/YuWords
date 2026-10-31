@@ -49,7 +49,7 @@ public sealed class UpdateApplyTests : IDisposable
         using var done = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { CreateNoWindow = true, UseShellExecute = false })!;
         done.WaitForExit();
         var log = Path.Combine(root, "apply.log");
-        var script = Updater.WriteApplyScript(staged, app, done.Id, log);
+        var script = Updater.WriteApplyScript(staged, app, done.Id, log, backup: true, new Version(0, 5, 0));
 
         using var p = Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"\"{script}\"\"") { CreateNoWindow = true, UseShellExecute = false })!;
         Assert.True(p.WaitForExit(30000));
@@ -58,5 +58,27 @@ public sealed class UpdateApplyTests : IDisposable
         Assert.Equal("足された", File.ReadAllText(Path.Combine(app, "dict", "new.txt")));
         Assert.Equal("残る", File.ReadAllText(Path.Combine(app, "keep.txt")));
         Assert.True(File.Exists(log));
+        // 上書きの前の版を控えている
+        Assert.Equal("古い", File.ReadAllText(Path.Combine(Updater.PreviousDir, "old.txt")));
+        Assert.Equal(new Version(0, 5, 0), Updater.PreviousVersion());
+        Assert.False(File.Exists(Path.Combine(app, "yuwords_version.txt")));
+    }
+
+    [Fact]
+    public void 差し替えに失敗したら控えから元に戻す()
+    {
+        var app = Path.Combine(root, "YuWords");
+        Directory.CreateDirectory(app);
+        File.Copy(Path.Combine(Environment.SystemDirectory, "whoami.exe"), Path.Combine(app, "YuWords.exe"));
+        File.WriteAllText(Path.Combine(app, "old.txt"), "古い");
+        var missing = Path.Combine(root, "無い展開先");   // robocopy が失敗する
+        using var done = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { CreateNoWindow = true, UseShellExecute = false })!;
+        done.WaitForExit();
+        var script = Updater.WriteApplyScript(missing, app, done.Id, Path.Combine(root, "apply.log"), backup: true, new Version(0, 5, 0));
+        using var p = Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"\"{script}\"\"") { CreateNoWindow = true, UseShellExecute = false })!;
+        Assert.True(p.WaitForExit(30000));
+        Assert.Equal(1, p.ExitCode);
+        Assert.Equal("古い", File.ReadAllText(Path.Combine(app, "old.txt")));
+        Assert.True(File.Exists(Path.Combine(app, "YuWords.exe")));
     }
 }

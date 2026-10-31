@@ -2,11 +2,16 @@
 # .NET ランタイムを同梱する（会社の PC で .NET を入れられなくても動くように）。インストーラは使わない。
 # Windows PowerShell 5.1 で動くように書いている（このファイルは BOM 付き UTF-8）
 
+# -TestVersion 0.5.99 のように指定すると、その版番号で作る（更新の流れを手元で試すための仮の新しい版。リリースには使わない）
+param([string]$TestVersion)
+
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 $OutputEncoding = [Text.Encoding]::UTF8
 
 $root = Split-Path -Parent $PSScriptRoot
 $out  = Join-Path $root 'dist\YuWords'
+$version = if ($TestVersion) { $TestVersion } else { (Select-Xml -Path (Join-Path $root 'Directory.Build.props') -XPath '//Version').Node.InnerText }
+if (-not $version) { Write-Host 'Directory.Build.props に Version がありません。'; exit 1 }
 
 if (-not (Test-Path (Join-Path $root 'dict\unidic\sys.dic'))) {
     Write-Host '辞書がありません。先に tools\get-dictionary.ps1 を実行してください。'
@@ -17,7 +22,7 @@ if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 
 foreach ($proj in 'src\YuWords\YuWords.csproj', 'src\YuWords.Cli\YuWords.Cli.csproj') {
     Write-Host "発行中: $proj"
-    dotnet publish (Join-Path $root $proj) -c Release -r win-x64 --self-contained true -o $out -v q --nologo
+    dotnet publish (Join-Path $root $proj) -c Release -r win-x64 --self-contained true -o $out -v q --nologo "-p:Version=$version"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "発行に失敗しました: $proj"
         exit 1
@@ -33,8 +38,6 @@ Copy-Item (Join-Path $root 'LICENSE') (Join-Path $out 'LICENSE.txt')
 Copy-Item (Join-Path $root 'README.md') $out
 Copy-Item (Join-Path $root 'licenses') (Join-Path $out 'licenses') -Recurse
 
-$version = (Select-Xml -Path (Join-Path $root 'Directory.Build.props') -XPath '//Version').Node.InnerText
-if (-not $version) { $version = 'dev' }
 $zip = Join-Path $root "dist\YuWords-$version-win-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip }
 Write-Host "zip にまとめています: $zip"
