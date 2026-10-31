@@ -13,6 +13,13 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // IME のユーザー辞書を使う処理だけを行う別のプロセス（本体から起動される）
+        if (args.Length == 3 && args[0] == ImeWorker.Argument)
+        {
+            Environment.Exit(ImeWorker.RunFromFiles(args[1], args[2]));
+            return;
+        }
+        ImeWorker.ExecutablePath = Application.ExecutablePath;
         ApplicationConfiguration.Initialize();
         if (args.Length == 3 && args[0] == "--screenshot")
         {
@@ -69,6 +76,8 @@ static class Program
             return;
         }
         var main = new MainForm(store);
+        if (args.FirstOrDefault(a => a is "--updated" or "--update-failed") is { } updateArg)
+            main.ShowUpdateResult(updateArg);   // 更新のあとに起動し直したとき
         if (args.Contains(MainForm.NewOnlyArgument)) main.LoadNewOnShown();   // 通知から開いたとき
         Application.Run(main);
     }
@@ -116,6 +125,7 @@ static class Program
         var shotStore = new AppStore(dir);
         shotStore.Settings.CheckImeDictionary = false;
         shotStore.Settings.UseContactReadings = false;
+        shotStore.Settings.UpdateCheck = false;
         shotStore.Settings.Welcomed = true;
         var form = new MainForm(shotStore);
         form.Shown += async (_, _) =>

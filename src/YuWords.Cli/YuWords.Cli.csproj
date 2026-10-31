@@ -9,7 +9,6 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>0.4.1</Version>
   </PropertyGroup>
 
   <!-- 発行時は辞書を exe の隣（dict\unidic）に置く。開発中は親フォルダをたどって見つける -->

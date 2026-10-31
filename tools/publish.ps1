@@ -33,7 +33,7 @@ Copy-Item (Join-Path $root 'LICENSE') (Join-Path $out 'LICENSE.txt')
 Copy-Item (Join-Path $root 'README.md') $out
 Copy-Item (Join-Path $root 'licenses') (Join-Path $out 'licenses') -Recurse
 
-$version = (Select-Xml -Path (Join-Path $root 'src\YuWords\YuWords.csproj') -XPath '//Version').Node.InnerText
+$version = (Select-Xml -Path (Join-Path $root 'Directory.Build.props') -XPath '//Version').Node.InnerText
 if (-not $version) { $version = 'dev' }
 $zip = Join-Path $root "dist\YuWords-$version-win-x64.zip"
 if (Test-Path $zip) { Remove-Item $zip }

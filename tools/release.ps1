@@ -16,8 +16,8 @@ $OutputEncoding = [Text.Encoding]::UTF8
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$version = (Select-Xml -Path (Join-Path $root 'src\YuWords\YuWords.csproj') -XPath '//Version').Node.InnerText
-if (-not $version) { Write-Host 'src\YuWords\YuWords.csproj に Version がありません。'; exit 1 }
+$version = (Select-Xml -Path (Join-Path $root 'Directory.Build.props') -XPath '//Version').Node.InnerText
+if (-not $version) { Write-Host 'Directory.Build.props に Version がありません。'; exit 1 }
 $tag = "v$version"
 
 gh --version | Out-Null

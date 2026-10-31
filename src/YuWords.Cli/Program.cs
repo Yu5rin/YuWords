@@ -47,6 +47,15 @@ static class Program
             {
                 case "tokens": return Tokens(string.Join(" ", rest));
                 case "ime-probe": return ImeProbe();
+                case "update-check":
+                {
+                    // update-check [今の版] … GitHub に新しい版があるかを確かめる（取ってはこない）
+                    var current = rest.Count > 0 ? Version.Parse(rest[0]) : Updater.CurrentVersion;
+                    var info = Updater.CheckGitHubAsync(current).GetAwaiter().GetResult();
+                    Console.WriteLine(info == null ? $"新しい版はありません（v{current}）"
+                        : $"新しい版 v{info.Version}\n  {info.Location}\n  {info.Size:N0} バイト\n  SHA256 {info.Sha256 ?? "不明"}\n{info.Notes}");
+                    return 0;
+                }
                 case "diagnose":
                 {
                     var results = Diagnostics.Run(new AppStore());
@@ -107,7 +116,7 @@ static class Program
         {
             using var dic = ImeDictionary.Open();
             Console.WriteLine("IFEDictionary: ユーザー辞書を開けました");
-            foreach (var (name, n) in dic.PosNumbers) Console.WriteLine($"  {name} = {n}");
+            foreach (var (name, n) in ImeDictionary.PosNumbers) Console.WriteLine($"  {name} = {n}");
         }
         catch (InvalidOperationException e)
         {

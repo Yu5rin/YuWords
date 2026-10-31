@@ -15,10 +15,9 @@ public sealed class ImeTests : IDisposable
     [Fact]
     public void IMEWRDはmsime_hと同じ大きさ()
     {
-        // msime.h は #pragma pack(1)。pwchReading, pwchDisplay, (nPos1,nPos2), rgulAttrs[2], cbComment, uct, pvComment を詰めて並べる
-        Assert.Equal(Environment.Is64BitProcess ? 44 : 32, ImeDictionary.WordStructSize);
-        // POSTBL も詰めて並べる（WORD の直後にポインタ）
-        Assert.Equal(Environment.Is64BitProcess ? 10 : 6, ImeDictionary.PosEntrySize);
+        // pwchReading, pwchDisplay, (nPos1,nPos2), rgulAttrs[2], cbComment, uct, pvComment。詰める（msime.h の pack(1)）と詰めない場合
+        Assert.Equal(Environment.Is64BitProcess ? 44 : 32, ImeDictionary.PackedWordSize);
+        Assert.Equal(Environment.Is64BitProcess ? 48 : 32, ImeDictionary.NaturalWordSize);
     }
 
     [Fact]

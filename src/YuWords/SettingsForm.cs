@@ -75,6 +75,7 @@ sealed class SettingsForm : Form
         tabs.TabPages.Add(RulesPage());
         tabs.TabPages.Add(BackupPage());
         tabs.TabPages.Add(RegisteredPage());
+        tabs.TabPages.Add(UpdatePage());
 
         var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, AutoSize = true };
         var cancel = new Button { Text = "キャンセル", DialogResult = DialogResult.Cancel, AutoSize = true };
@@ -149,6 +150,43 @@ sealed class SettingsForm : Form
         var page = new TabPage("語の追加分");
         page.Controls.Add(t);
         return page;
+    }
+
+    readonly CheckBox chkUpdate = new() { Text = "起動したときに新しい版を確かめる（1日に1回まで）", AutoSize = true, Margin = new Padding(3, 6, 3, 6) };
+    readonly RadioButton rdoGitHub = new() { Text = "GitHub（インターネット）", AutoSize = true };
+    readonly RadioButton rdoFolder = new() { Text = "社内の共有フォルダ（GitHub につながらないとき）", AutoSize = true };
+    readonly TextBox txtUpdateFolder = new() { Width = Dpi.Scale(360) };
+
+    TabPage UpdatePage()
+    {
+        var s = store.Settings;
+        chkUpdate.Checked = s.UpdateCheck;
+        (s.UpdateSource == "folder" ? rdoFolder : rdoGitHub).Checked = true;
+        txtUpdateFolder.Text = s.UpdateFolder;
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, Padding = new Padding(10) };
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        t.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        void Span(Control c) { t.Controls.Add(c); t.SetColumnSpan(c, 2); }
+        Span(Note($"今の版: v{Updater.CurrentVersion}"));
+        Span(chkUpdate);
+        Span(Note("新しい版の確認先"));
+        Span(rdoGitHub);
+        Span(rdoFolder);
+        txtUpdateFolder.Dock = DockStyle.Fill;
+        t.Controls.Add(txtUpdateFolder);
+        var browse = new Button { Text = "参照...", AutoSize = true };
+        browse.Click += (_, _) =>
+        {
+            using var dlg = new FolderBrowserDialog { Description = "配布物（YuWords-x.y.z-win-x64.zip）を置く共有フォルダ", UseDescriptionForTitle = true };
+            if (dlg.ShowDialog(this) == DialogResult.OK) { txtUpdateFolder.Text = dlg.SelectedPath; rdoFolder.Checked = true; }
+        };
+        t.Controls.Add(browse);
+        Span(Note(
+            "GitHub には Windows のプロキシ設定と、ログイン中のアカウントの認証情報で接続します。送るのは版の問い合わせだけです。\n" +
+            "社内で配るときは、GitHub のリリースから YuWords-x.y.z-win-x64.zip を共有フォルダに置いてください" +
+            "（同じ場所に「zip の名前.sha256」を置くと、壊れていないかも確かめます）。\n" +
+            "どちらも使えないときは、「使い方」→「ファイルから更新...」で zip を選んで更新できます。"));
+        return Page("更新", t);
     }
 
     TabPage RulesPage()
@@ -413,6 +451,9 @@ sealed class SettingsForm : Form
         s.UseGalReadings = chkGal.Checked;
         s.FolderDays = (int)numFolderDays.Value;
         s.FontSize = (float)numFont.Value;
+        s.UpdateCheck = chkUpdate.Checked;
+        s.UpdateSource = rdoFolder.Checked ? "folder" : "github";
+        s.UpdateFolder = txtUpdateFolder.Text.Trim();
         s.ThemeMode = cmbTheme.SelectedIndex switch { 1 => "light", 2 => "dark", _ => "auto" };
         var freq = (AutoCheckFrequency)cmbAuto.SelectedIndex;
         var hour = (int)numAutoHour.Value;

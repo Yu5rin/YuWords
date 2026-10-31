@@ -30,7 +30,16 @@ dotnet test
 
 配布物は `tools/publish.ps1`（`dist/` に出力。Git には入れない）。
 リリースは `tools/release.ps1`（ユーザーの手元で実行する。本文は CHANGELOG.md のその版の項目＋ダウンロードの表）。
-版を上げるときは `src/YuWords/YuWords.csproj` の Version と CHANGELOG.md の見出し（`## vX.Y.Z`）をそろえる。
+版を上げるときは `Directory.Build.props` の Version と CHANGELOG.md の見出し（`## vX.Y.Z`）をそろえる（版は全プロジェクトで共通）。
+
+## 自動更新とリリース
+
+自動更新（`src/YuWords.Core/Updater.cs`）は GitHub の最新リリースを読む。リリースを作るときは次を守る。
+
+- 配布物の名前は `YuWords-x.y.z-win-x64.zip`、タグは `vx.y.z`（どちらも版の判定に使う）
+- SHA256 は配布物の digest を使い、無ければ本文「## ダウンロード」の表の SHA256 の列を読む。表の形（ファイル・サイズ・SHA256）を変えない
+- 更新の画面には本文「## 変更点」の項目を出す。見出しの名前を変えない
+- 下書き（draft）のリリースは対象にしない
 
 ## ライセンス
 

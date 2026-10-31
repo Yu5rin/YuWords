@@ -41,6 +41,21 @@ public sealed class AppSettings
     /// <summary>自動で調べる時刻（時）</summary>
     public int AutoCheckHour { get; set; } = 9;
 
+    /// <summary>起動したときに新しい版を確かめるか</summary>
+    public bool UpdateCheck { get; set; } = true;
+
+    /// <summary>新しい版の確認先: github / folder（社内の共有フォルダ）</summary>
+    public string UpdateSource { get; set; } = "github";
+
+    /// <summary>確認先が folder のときのフォルダ（YuWords-x.y.z-win-x64.zip を置く）</summary>
+    public string UpdateFolder { get; set; } = "";
+
+    /// <summary>最後に新しい版を確かめた日時</summary>
+    public DateTime? LastUpdateCheck { get; set; }
+
+    /// <summary>「この版は知らせない」を選んだ版</summary>
+    public string SkippedVersion { get; set; } = "";
+
     /// <summary>画面の色: auto（Windows に合わせる）/ light / dark</summary>
     public string ThemeMode { get; set; } = "auto";
 

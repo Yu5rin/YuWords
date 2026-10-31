@@ -84,6 +84,7 @@ sealed partial class MainForm : Form
         ApplyFontSize();
         RestoreLayout();
         RestoreSession();
+        CheckForUpdatesOnStartup();
         if (!store.Settings.Welcomed && store.Registered.Count == 0 && all.Count == 0)
             Shown += (_, _) => RestoreHelper.Welcome(this, store);
         UpdateCounts();
@@ -199,6 +200,8 @@ sealed partial class MainForm : Form
         btnHelp.Alignment = ToolStripItemAlignment.Right;
         btnHelp.DropDownItems.Add("使い方とキー操作（F1）", null, (_, _) => ShowHelp());
         btnHelp.DropDownItems.Add("環境チェック...", null, async (_, _) => await RunDiagnosticsAsync());
+        btnHelp.DropDownItems.Add("更新を確認...", null, async (_, _) => await CheckForUpdatesAsync(manual: true));
+        btnHelp.DropDownItems.Add("ファイルから更新...", null, async (_, _) => await UpdateFromFileAsync());
         btnHelp.DropDownItems.Add("ログのフォルダを開く", null, (_, _) =>
         {
             if (Log.Directory != null) Process.Start("explorer.exe", $"\"{Log.Directory}\"");

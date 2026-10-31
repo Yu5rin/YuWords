@@ -64,10 +64,11 @@ public static class Diagnostics
 
         Add("IME のユーザー辞書（IFEDictionary）", () =>
         {
-            using var dic = ImeDictionary.Open();
-            var words = dic.GetUserWords();
-            var pos = string.Join("、", dic.PosNumbers.Select(kv => $"{kv.Key}={kv.Value}"));
-            int hr = dic.LastGetWordsResult;
+            // 別のプロセスで開いて読むだけ（IME の中で落ちても、ここは「NG」になるだけ）
+            var res = ImeWorker.Call(new ImeWorker.Request { Op = "probe" }, timeoutSeconds: 60);
+            var words = res.Words;
+            var pos = string.Join("、", ImeDictionary.PosNumbers.Select(kv => $"{kv.Key}={kv.Value}"));
+            int hr = res.GetWordsResult;
             // IFED_S_EMPTY_DICTIONARY（0x00047201）・IFED_E_NO_ENTRY（0x80047304）は「登録されている語なし」。ほかの負の値は読み取りの失敗
             bool empty = hr is 0x00047201 or unchecked((int)0x80047304);
             var result = empty ? "登録されている語なし" : hr < 0 ? $"語を読めませんでした（0x{hr:X8}）" : "読めました";
