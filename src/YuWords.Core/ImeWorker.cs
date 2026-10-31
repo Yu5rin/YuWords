@@ -36,6 +36,12 @@ public static class ImeWorker
         public List<Word> Succeeded { get; set; } = [];
         public int Deleted { get; set; }
         public int GetWordsResult { get; set; }
+        /// <summary>登録のあとに辞書を読み直して確かめられたか（読み直せなければ false で、IME の返事をそのまま使う）</summary>
+        public bool Verified { get; set; }
+        /// <summary>IME は「登録した」と返したのに、読み直すと辞書に無かった語</summary>
+        public List<Word> NotFound { get; set; } = [];
+        /// <summary>試しに登録した結果（selftest）</summary>
+        public string SelfTest { get; set; } = "";
     }
 
     static readonly JsonSerializerOptions Json = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
@@ -108,6 +114,58 @@ public static class ImeWorker
         return res.Ok ? 0 : 1;
     }
 
+    /// <summary>
+    /// 登録のあとに辞書を読み直し、IME が「登録した」と返した語が本当に入ったかを確かめる。
+    /// 入っていなかった語は失敗に回す。辞書を読み直せないとき（0 語しか読めない など）は確かめずに IME の返事を使う
+    /// </summary>
+    static void Verify(ImeDictionary dic, Response res)
+    {
+        if (res.Succeeded.Count == 0) return;
+        ApplyVerification(res, dic.GetUserWords().Select(w => (w.Word, w.Reading)).ToList());
+    }
+
+    /// <summary>読み直した辞書の語（present）と照らして、入っていなかった語を失敗に回す（テストのため分けてある）</summary>
+    internal static void ApplyVerification(Response res, IReadOnlyCollection<(string Word, string Reading)> words)
+    {
+        if (words.Count == 0) return;   // 読み直せない（並びが合わず読めない など）。確かめられないので IME の返事を使う
+        var present = words.ToHashSet();
+        res.Verified = true;
+        foreach (var w in res.Succeeded.ToList())
+        {
+            if (present.Contains((w.Text, w.Reading))) continue;
+            res.Succeeded.Remove(w);
+            res.NotFound.Add(w);
+            res.Failed.Add(w);
+        }
+        int missing = res.NotFound.Count;
+        // 数を合わせる（登録した → 見つからない、の分を減らす）
+        int fromRegistered = Math.Min(missing, res.Registered);
+        res.Registered -= fromRegistered;
+        res.Skipped -= Math.Min(missing - fromRegistered, res.Skipped);
+    }
+
+    public const string TestReading = "ゆーわーずてすとご";
+    public const string TestWord = "YuWords試験語";
+
+    /// <summary>
+    /// 試しに架空の語を登録し、読み直して入ったかを確かめてから消す。IME への直接登録がこの PC で本当に効くかの判定
+    /// </summary>
+    static string SelfTest(ImeDictionary dic)
+    {
+        var before = dic.GetUserWords();
+        bool readable = before.Count > 0;
+        var r = dic.Register(TestReading, TestWord, "名詞");
+        if (r == RegisterResult.Failed) return "NG: 登録できませんでした（IME が受け付けませんでした）";
+        var after = dic.GetUserWords();
+        bool found = after.Any(w => w.Word == TestWord && w.Reading == TestReading);
+        bool deleted = dic.Delete(TestReading, TestWord, "名詞");
+        var gone = !dic.GetUserWords().Any(w => w.Word == TestWord && w.Reading == TestReading);
+        if (found && gone) return "OK: 登録・読み直し・削除ができました（直接登録が使えます）";
+        if (found) return "注意: 登録はできましたが、試験の語を消せませんでした（ユーザー辞書ツールで「" + TestWord + "」を消してください）";
+        if (!readable && after.Count == 0) return "注意: 登録できたと返りましたが、辞書を読み直せず確かめられませんでした" + (deleted ? "" : "");
+        return "NG: 登録できたと返りましたが、辞書に入っていませんでした（直接登録は効かないようです。辞書ファイルに出力して取り込んでください）";
+    }
+
     /// <summary>実際の処理（同じプロセスで行う）</summary>
     public static Response Serve(Request req)
     {
@@ -133,6 +191,10 @@ public static class ImeWorker
                             default: res.Failed.Add(w); break;
                         }
                     }
+                    Verify(dic, res);
+                    break;
+                case "selftest":
+                    res.SelfTest = SelfTest(dic);
                     break;
                 case "delete":
                     foreach (var w in req.Words)

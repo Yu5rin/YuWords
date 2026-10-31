@@ -48,11 +48,25 @@ sealed partial class MainForm
             ScheduleSave();
 
             var summary = $"登録 {report.Registered} 語、既にあったもの {report.Skipped} 語、失敗 {report.Failed.Count} 語";
+            if (report.LooksIneffective)
+            {
+                // 1語も入らなかった: 直接登録がこの PC では効かないとみなし、辞書ファイル＋ユーザー辞書ツールの流れに切り替えてもらう
+                SetStatus(summary);
+                Log.Error($"直接登録で1語も入りませんでした（{summary}）");
+                fallback = MessageBox.Show(this,
+                    $"{summary}\n\nIME への直接登録で、1語も辞書に入りませんでした" +
+                    (report.NotFound > 0 ? $"（IME は登録したと返しましたが、読み直すと {report.NotFound} 語とも辞書にありませんでした）" : "") + "。\n\n" +
+                    "辞書ファイルに出力して、ユーザー辞書ツールで取り込みますか？\n（この PC では直接登録が効かないようなので、［設定］の「IME のユーザー辞書を直接使う」を OFF にすることもできます）",
+                    "IME に登録", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
+                goto Done;   // 後片付け（finally）のあとで、辞書ファイルの流れに進む
+            }
             var verify = checkedCount == 0 ? "" :
                 $"\n\n登録後に変換を確かめた結果: {checkedCount} 語のうち {converts} 語が、そのよみで最初の候補に出ます。" +
                 (converts < checkedCount ? "\n残りは別の候補が先に出ますが、変換候補の一覧や予測変換には出ます（使ううちに上に来ます）。" : "");
             SetStatus(summary);
             var msg = token.IsCancellationRequested ? "途中で中止しました。\n" + summary : summary;
+            if (report.Verified) msg += "\n（登録のあとに辞書を読み直して、入ったことを確かめました）";
+            if (report.NotFound > 0) msg += $"\nIME は登録したと返しましたが、{report.NotFound} 語は辞書に入っていなかったので失敗に数えています。";
             if (report.Failed.Count > 0)
             {
                 msg += "\n\n登録できなかった語:\n" + string.Join("\n",
@@ -87,6 +101,7 @@ sealed partial class MainForm
             cts = null;
             SetBusy(false);
         }
+    Done:
         if (fallback && ExportIme(offerFolder: false))
             OpenDictionaryTool();
     }

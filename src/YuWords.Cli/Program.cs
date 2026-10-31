@@ -47,6 +47,10 @@ static class Program
             {
                 case "tokens": return Tokens(string.Join(" ", rest));
                 case "ime-probe": return ImeProbe();
+                case "ime-selftest":
+                    // 架空の語を登録・読み直し・削除して、直接登録が効くかを確かめる
+                    Console.WriteLine(ImeRegistration.SelfTest());
+                    return 0;
                 case "update-check":
                 {
                     // update-check [今の版] … GitHub に新しい版があるかを確かめる（取ってはこない）

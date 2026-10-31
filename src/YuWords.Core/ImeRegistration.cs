@@ -5,6 +5,12 @@ public sealed class RegistrationReport
 {
     public int Registered { get; set; }
     public int Skipped { get; set; }
+    /// <summary>登録のあとに辞書を読み直して確かめられたか</summary>
+    public bool Verified { get; set; }
+    /// <summary>IME は「登録した」と返したのに、辞書に入っていなかった数</summary>
+    public int NotFound { get; set; }
+    /// <summary>直接登録が効いていない（1語も入らなかった）とみなせるか</summary>
+    public bool LooksIneffective => Registered + Skipped == 0 && Failed.Count > 0;
     public List<(string Reading, string Word, string Pos)> Failed { get; } = [];
     /// <summary>登録できた語と既にあった語（登録済みリストに入れるもの）</summary>
     public List<(string Reading, string Word, string Pos)> Succeeded { get; } = [];
@@ -32,7 +38,8 @@ public static class ImeRegistration
     {
         if (!Enabled) throw new InvalidOperationException(Disabled);
         var res = ImeWorker.Call(new ImeWorker.Request { Op = "register", Words = ToWords(words) }, ct);
-        var report = new RegistrationReport { Registered = res.Registered, Skipped = res.Skipped };
+        var report = new RegistrationReport { Registered = res.Registered, Skipped = res.Skipped, Verified = res.Verified, NotFound = res.NotFound.Count };
+        if (res.NotFound.Count > 0) Log.Error($"IME が登録したと返したのに辞書に無かった語: {res.NotFound.Count} 語");
         report.Failed.AddRange(res.Failed.Select(w => (w.Reading, w.Text, w.Pos)));
         report.Succeeded.AddRange(res.Succeeded.Select(w => (w.Reading, w.Text, w.Pos)));
         progress?.Report(words.Count);
@@ -40,6 +47,9 @@ public static class ImeRegistration
         ImeLookup.ForgetConversions(report.Succeeded.Select(w => w.Reading));   // 登録で変換結果が変わるため
         return report;
     }
+
+    /// <summary>試しに架空の語を登録し、読み直して確かめてから消す（環境チェック用）。結果の文</summary>
+    public static string SelfTest() => ImeWorker.Call(new ImeWorker.Request { Op = "selftest" }, timeoutSeconds: 60).SelfTest;
 
     /// <summary>IME のユーザー辞書の語（よみ・表記）。開けなければ null</summary>
     public static HashSet<(string Word, string Reading)>? ReadUserDictionary()

@@ -108,7 +108,7 @@ sealed partial class MainForm : Form
             var results = await StaTask.Run(() => Diagnostics.Run(store));
             Log.Info("環境チェック: " + string.Join("、", results.Select(r => $"{r.Name}={r.Status}")));
             SetStatus("環境チェックが終わりました。");
-            using var f = new DiagnosticsForm(results, Application.ProductVersion.Split('+')[0]);
+            using var f = new DiagnosticsForm(results, Application.ProductVersion.Split('+')[0], store);
             UseWaitCursor = false;
             f.ShowDialog(this);
         }
