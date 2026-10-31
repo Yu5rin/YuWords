@@ -68,7 +68,7 @@ sealed class SettingsForm : Form
         cmbAuto.SelectedIndex = (int)s.AutoCheck;
         numAutoHour.Value = Math.Clamp(s.AutoCheckHour, 0, 23);
 
-        var tabs = new TabControl { Dock = DockStyle.Fill };
+        tabs.Dock = DockStyle.Fill;
         tabs.TabPages.Add(ExtractPage());
         tabs.TabPages.Add(TextPage("除外リスト", "抽出結果に出さない語（1行に1語）。確認画面の右クリック「除外リストに追加」でも増えます。", txtExcluded));
         tabs.TabPages.Add(WordsPage());
@@ -333,12 +333,11 @@ sealed class SettingsForm : Form
     }
 
     /// <summary>IME のユーザー辞書の語を、登録済みの一覧（と持ち出し用辞書）に取り込む</summary>
-    void ImportFromIme()
+    async Task ImportFromIme()
     {
         try
         {
-            UseWaitCursor = true;
-            int n = ImeRegistration.ImportUserDictionary(store);
+            int n = await ImeBusy(() => ImeRegistration.ImportUserDictionary(store));
             ReloadRegistered();
             MessageBox.Show(this, $"IME のユーザー辞書から {n} 語を登録済みの一覧に取り込みました。持ち出し用辞書にも入ります。", "登録済みの語");
         }
@@ -346,24 +345,44 @@ sealed class SettingsForm : Form
         {
             MessageBox.Show(this, $"IME のユーザー辞書を開けませんでした。\n{ex.Message}", "登録済みの語", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
-        finally { UseWaitCursor = false; }
     }
+
+    /// <summary>IME を使う処理を別のスレッドで行う（画面を固めない）。その間は設定画面を操作できないようにする</summary>
+    async Task<T> ImeBusy<T>(Func<T> func)
+    {
+        UseWaitCursor = true;
+        tabs.Enabled = false;
+        try { return await StaTask.Run(func); }
+        finally
+        {
+            tabs.Enabled = true;
+            UseWaitCursor = false;
+        }
+    }
+
+    readonly TabControl tabs = new();
 
     readonly ListView lstRegistered = new()
     {
         Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false,
     };
     readonly Label lblRegistered = Note("");
+    readonly TextBox txtRegSearch = new() { Width = Dpi.Scale(160), PlaceholderText = "語句・よみで探す" };
+    readonly CheckBox chkStale = new() { Text = "使わなくなったかもしれない語だけ", AutoSize = true, Margin = new Padding(10, 5, 3, 3) };
+    readonly NumericUpDown numStaleDays = new() { Minimum = 30, Maximum = 3650, Increment = 30, Width = Dpi.Scale(70) };
 
     TabPage RegisteredPage()
     {
         lstRegistered.Columns.Add("語句", 150);
-        lstRegistered.Columns.Add("よみ", 150);
+        lstRegistered.Columns.Add("よみ", 140);
         lstRegistered.Columns.Add("品詞", 70);
-        lstRegistered.Columns.Add("登録日", 90);
+        lstRegistered.Columns.Add("登録日", 85);
+        lstRegistered.Columns.Add("最後に見た日", 95);
         lstRegistered.Columns.Add("登録先", 90);
+        numStaleDays.Value = Math.Clamp(store.Settings.StaleDays, (int)numStaleDays.Minimum, (int)numStaleDays.Maximum);
         ReloadRegistered();
 
+        var edit = new Button { Text = "よみ・品詞を直す...", AutoSize = true };
         var del = new Button { Text = "IME から削除して一覧から外す", AutoSize = true };
         var forget = new Button { Text = "一覧から外すだけ", AutoSize = true };
         var import = new Button { Text = "IME のユーザー辞書から取り込む", AutoSize = true };
@@ -374,18 +393,36 @@ sealed class SettingsForm : Form
         new ToolTip().SetToolTip(share, "同僚に渡す・ほかの IME で使うための辞書ファイルを書き出します（Microsoft IME・Google 日本語入力・ATOK）");
         csvOut.Click += (_, _) => ExportRegisteredCsv();
         csvIn.Click += (_, _) => RestoreFromFile();
-        import.Click += (_, _) => ImportFromIme();
+        import.Click += async (_, _) => await ImportFromIme();
         new ToolTip().SetToolTip(import, "ユーザー辞書ツールなど YuWords 以外で登録した語も、持ち出し用辞書に入れます");
-        del.Click += (_, _) => RemoveRegistered(fromIme: true);
-        forget.Click += (_, _) => RemoveRegistered(fromIme: false);
+        edit.Click += async (_, _) => await EditRegistered();
+        lstRegistered.DoubleClick += async (_, _) => await EditRegistered();
+        del.Click += async (_, _) => await RemoveRegistered(fromIme: true);
+        forget.Click += async (_, _) => await RemoveRegistered(fromIme: false);
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
-        buttons.Controls.AddRange([del, forget, import, csvOut, csvIn, share]);
+        buttons.Controls.AddRange([edit, del, forget, import, csvOut, csvIn, share]);
 
-        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(8) };
+        txtRegSearch.TextChanged += (_, _) => ReloadRegistered();
+        chkStale.CheckedChanged += (_, _) => ReloadRegistered();
+        numStaleDays.ValueChanged += (_, _) =>
+        {
+            store.Settings.StaleDays = (int)numStaleDays.Value;
+            if (chkStale.Checked) ReloadRegistered();
+        };
+        new ToolTip().SetToolTip(chkStale,
+            "Outlook の送信メールを読み込むたびに、登録済みの語がメールに出てくるかを調べています。\n" +
+            "最後に見かけた日（見かけていなければ登録した日）から、この日数のあいだ一度も出てこなかった語を出します。");
+        var filters = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, WrapContents = true, Margin = new Padding(0) };
+        filters.Controls.AddRange([txtRegSearch, chkStale, numStaleDays,
+            new Label { Text = "日以上、文章に出てこない", AutoSize = true, Margin = new Padding(3, 6, 3, 3) }]);
+
+        var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(8) };
+        t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.Controls.Add(lblRegistered);
+        t.Controls.Add(filters);
         t.Controls.Add(lstRegistered);
         t.Controls.Add(buttons);
         return Page("登録済みの語", t);
@@ -393,18 +430,65 @@ sealed class SettingsForm : Form
 
     void ReloadRegistered()
     {
+        var q = txtRegSearch.Text.Trim();
+        var qHira = TermExtractor.KataToHira(q);
+        IEnumerable<RegisteredWord> rows = chkStale.Checked
+            ? WordUsage.Stale(store.Registered, store.LastUsed, store.Settings.LastUsageScan, (int)numStaleDays.Value)
+            : store.Registered;
+        if (q.Length > 0)
+            rows = rows.Where(r => r.Word.Contains(q, StringComparison.OrdinalIgnoreCase) || r.Reading.Contains(qHira, StringComparison.Ordinal));
+        var list = rows.OrderByDescending(r => r.RegisteredAt).ToList();
         lstRegistered.BeginUpdate();
         lstRegistered.Items.Clear();
-        foreach (var r in store.Registered.OrderByDescending(r => r.RegisteredAt))
-            lstRegistered.Items.Add(new ListViewItem([r.Word, r.Reading, r.Pos, r.RegisteredAt.ToString("yyyy/MM/dd"),
+        foreach (var r in list)
+        {
+            var seen = store.LastUsed.TryGetValue(r.Word, out var t) ? t.ToString("yyyy/MM/dd") : "";
+            lstRegistered.Items.Add(new ListViewItem([r.Word, r.Reading, r.Pos, r.RegisteredAt.ToString("yyyy/MM/dd"), seen,
                 r.Target == GoogleIme.Target ? "Google" : "Microsoft IME"]) { Tag = r });
+        }
         lstRegistered.EndUpdate();
-        lblRegistered.Text = $"YuWords で登録（出力）した語: {store.Registered.Count} 語。ここでの操作はすぐに保存されます。";
+        var shown = list.Count == store.Registered.Count ? "" : $"（表示 {list.Count} 語）";
+        var scan = store.Settings.LastUsageScan is { } s ? $"　文章を最後に調べた日: {s:yyyy/MM/dd}" : "";
+        lblRegistered.Text = $"YuWords で登録（出力）した語: {store.Registered.Count} 語{shown}。ここでの操作はすぐに保存されます。{scan}";
+        if (chkStale.Checked && store.Settings.LastUsageScan == null)
+            lblRegistered.Text += "\nまだ文章を調べていません。Outlook の送信メールを読み込むと、登録済みの語が出てくるかを調べます。";
     }
 
-    void RemoveRegistered(bool fromIme)
+    List<RegisteredWord> SelectedRegistered() =>
+        lstRegistered.SelectedItems.Cast<ListViewItem>().Select(i => (RegisteredWord)i.Tag!).ToList();
+
+    async Task EditRegistered()
     {
-        var sel = lstRegistered.SelectedItems.Cast<ListViewItem>().Select(i => (RegisteredWord)i.Tag!).ToList();
+        var sel = SelectedRegistered();
+        if (sel.Count != 1)
+        {
+            if (sel.Count > 1) MessageBox.Show(this, "直す語を1つだけ選んでください。", "登録済みの語");
+            return;
+        }
+        var old = sel[0];
+        using var ime = new ImeConverter();
+        using var f = new AddWordForm(old.Word, w => w.Length == 0 ? "" : ime.Phonetic(w), r => ime.Convert(r), (old.Reading, old.Pos));
+        if (f.ShowDialog(this) != DialogResult.OK || (f.Reading == old.Reading && f.Pos == old.Pos)) return;
+        var (reading, pos) = (f.Reading, f.Pos);
+        try
+        {
+            bool ok = await ImeBusy(() => ImeRegistration.Edit(old, reading, pos, store));
+            if (!ok)
+                MessageBox.Show(this, "IME に新しいよみで登録できませんでした。元のまま残しています。", "登録済みの語", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            else if (old.Target == GoogleIme.Target)
+                MessageBox.Show(this, "一覧を直しました。Google 日本語入力の辞書は、辞書ツールで直すか、書き出し直して取り込んでください。", "登録済みの語");
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(this, $"IME に接続できませんでした。一覧は変えていません。\n{ex.Message}", "登録済みの語", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        ReloadRegistered();
+    }
+
+    async Task RemoveRegistered(bool fromIme)
+    {
+        var sel = SelectedRegistered();
         if (sel.Count == 0) return;
         var msg = fromIme
             ? $"{sel.Count} 語を IME のユーザー辞書から削除し、登録済みの一覧から外します。"
@@ -415,8 +499,9 @@ sealed class SettingsForm : Form
         {
             if (fromIme)
             {
-                int n = ImeRegistration.Unregister(sel, store);
-                if (n < sel.Count)
+                int n = await ImeBusy(() => ImeRegistration.Unregister(sel, store));
+                int msime = sel.Count(w => w.Target == "MSIME");
+                if (n < msime)
                     MessageBox.Show(this, $"IME から削除できたのは {n} 語です（ほかは IME に無かったか、削除できませんでした）。一覧からはすべて外しました。", "登録済みの語");
             }
             else store.RemoveRegistered(sel);

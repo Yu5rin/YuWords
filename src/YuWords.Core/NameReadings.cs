@@ -151,7 +151,10 @@ public static class NameReadings
         rows.Where(c => c.Category == "人名" || c.Unsure).Select(c => c.Word).ToList();
 
     /// <summary>候補のうち、辞書にある語のよみを置き換えて要確認を外す。戻り値は置き換えた数</summary>
-    public static int Apply(List<Candidate> rows, Map map, string source = "連絡先")
+    /// <summary>ふりがなで補ったよみの出どころ（候補の ReadingSource）。この語は人名として扱う</summary>
+    public const string Source = "連絡先";
+
+    public static int Apply(List<Candidate> rows, Map map, string source = Source)
     {
         if (map.Count == 0) return 0;
         int n = 0;

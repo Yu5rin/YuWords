@@ -17,11 +17,12 @@ sealed class AddWordForm : Form
     public string Reading => TermExtractor.KataToHira(txtReading.Text.Trim());
     public string Pos => (string)cmbPos.SelectedItem!;
 
-    public AddWordForm(string initialWord, Func<string, string> phonetic, Func<string, string> convert)
+    /// <param name="edit">登録済みの語のよみ・品詞を直すときのよみと品詞（語句は変えられない）</param>
+    public AddWordForm(string initialWord, Func<string, string> phonetic, Func<string, string> convert, (string Reading, string Pos)? edit = null)
     {
         this.phonetic = phonetic;
         this.convert = convert;
-        Text = "語を追加";
+        Text = edit == null ? "語を追加" : "よみ・品詞を直す";
         Font = new Font("Yu Gothic UI", 9f);
         AutoScaleMode = AutoScaleMode.Dpi;
         Theme.Apply(this);
@@ -47,7 +48,7 @@ sealed class AddWordForm : Form
         t.Controls.Add(new Label());
         t.Controls.Add(lblConv);
 
-        var ok = new Button { Text = "一覧に追加", DialogResult = DialogResult.OK, AutoSize = true };
+        var ok = new Button { Text = edit == null ? "一覧に追加" : "直す", DialogResult = DialogResult.OK, AutoSize = true };
         var cancel = new Button { Text = "キャンセル", DialogResult = DialogResult.Cancel, AutoSize = true };
         var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         buttons.Controls.AddRange([cancel, ok]);
@@ -73,7 +74,16 @@ sealed class AddWordForm : Form
                 DialogResult = DialogResult.None;
             }
         };
-        txtWord.Text = initialWord;
+        if (edit is { } e0)
+        {
+            readingEdited = true;
+            txtWord.ReadOnly = true;
+            txtWord.Text = initialWord;
+            txtReading.Text = e0.Reading;
+            cmbPos.SelectedItem = ReviewItem.PosChoices.Contains(e0.Pos) ? e0.Pos : "名詞";
+            ActiveControl = txtReading;
+        }
+        else txtWord.Text = initialWord;
         UpdateState();
     }
 

@@ -47,6 +47,12 @@ public sealed class AppSettings
     /// <summary>起動したときに、チームの辞書の新しい語を知らせるか</summary>
     public bool TeamNotify { get; set; } = true;
 
+    /// <summary>登録済みの語が出てくるかを最後に文章で調べた日時（使わなくなった語の判定に使う）</summary>
+    public DateTime? LastUsageScan { get; set; }
+
+    /// <summary>この日数のあいだ文章に出てこなければ「使わなくなったかもしれない」とする</summary>
+    public int StaleDays { get; set; } = 180;
+
     /// <summary>起動したときに新しい版を確かめるか</summary>
     public bool UpdateCheck { get; set; } = true;
 
@@ -127,6 +133,19 @@ public sealed class AppStore
     string HeldPath => Path.Combine(Dir, "held.json");
     string LearnedPath => Path.Combine(Dir, "learned.json");
     string TeamSeenPath => Path.Combine(Dir, "team_seen.json");
+    string LastUsedPath => Path.Combine(Dir, "last_used.json");
+
+    /// <summary>登録済みの語を最後に文章で見かけた日時（語句 → 日時）</summary>
+    public Dictionary<string, DateTime> LastUsed { get; private set; } = [];
+
+    /// <summary>文章を調べた結果を残す（見かけた語の日時と、調べた日時）</summary>
+    public void MarkUsed(IEnumerable<string> words, DateTime when)
+    {
+        foreach (var w in words) LastUsed[w] = when;
+        Save(LastUsedPath, LastUsed);
+        Settings.LastUsageScan = when;
+        SaveSettings();
+    }
 
     /// <summary>チームの辞書で、すでに知らせた語（語句 TAB よみ）</summary>
     public HashSet<string> TeamSeen { get; private set; } = [];
@@ -169,6 +188,7 @@ public sealed class AppStore
         Held = (Load<List<HeldWord>>(HeldPath) ?? []).GroupBy(h => h.Word).ToDictionary(g => g.Key, g => g.Last());
         Learned = Load<Dictionary<string, string>>(LearnedPath) ?? [];
         TeamSeen = (Load<List<string>>(TeamSeenPath) ?? []).ToHashSet();
+        LastUsed = Load<Dictionary<string, DateTime>>(LastUsedPath) ?? [];
     }
 
     static T? Load<T>(string path) where T : class
@@ -274,6 +294,21 @@ public sealed class AppStore
     {
         var set = words.ToHashSet();
         Registered.RemoveAll(set.Contains);
+        registeredSet = null;
+        Save(RegisteredPath, Registered);
+        TryWriteBackup();
+    }
+
+    /// <summary>登録済みの語のよみ・品詞を置き換え（登録日はそのまま）、持ち出し用辞書を作り直す</summary>
+    public void ReplaceRegistered(RegisteredWord old, string reading, string pos)
+    {
+        int i = Registered.IndexOf(old);
+        if (i < 0) return;
+        // 同じ語・よみ・登録先がほかにあれば、重ならないよう古い方を外すだけにする
+        if (reading != old.Reading && Registered.Any(r => r != old && r.Target == old.Target && r.Word == old.Word && r.Reading == reading))
+            Registered.RemoveAt(i);
+        else
+            Registered[i] = old with { Reading = reading, Pos = pos };
         registeredSet = null;
         Save(RegisteredPath, Registered);
         TryWriteBackup();

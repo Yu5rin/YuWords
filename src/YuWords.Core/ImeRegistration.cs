@@ -74,6 +74,30 @@ public static class ImeRegistration
         return store.AddRegistered(res.Words.Select(w => (w.Text, w.Reading, w.Pos)));
     }
 
+    /// <summary>
+    /// 登録済みの語のよみ・品詞を直す。Microsoft IME に登録した語は、古い語を IME から消して新しい語を登録し直す
+    /// （登録できなければ古い語を戻し、false を返して一覧は変えない）。Google に書き出した語は一覧だけ直す
+    /// </summary>
+    public static bool Edit(RegisteredWord old, string reading, string pos, AppStore store, CancellationToken ct = default)
+    {
+        reading = TermExtractor.KataToHira(reading.Trim());
+        if (reading.Length == 0 || (reading == old.Reading && pos == old.Pos)) return false;
+        if (old.Target == "MSIME")
+        {
+            if (!Enabled) throw new InvalidOperationException(Disabled);
+            ImeWorker.Call(new ImeWorker.Request { Op = "delete", Words = ToWords([(old.Reading, old.Word, old.Pos)]) }, ct, 120);
+            var res = ImeWorker.Call(new ImeWorker.Request { Op = "register", Words = ToWords([(reading, old.Word, pos)]) }, ct, 120);
+            if (res.Succeeded.Count == 0)
+            {
+                ImeWorker.Call(new ImeWorker.Request { Op = "register", Words = ToWords([(old.Reading, old.Word, old.Pos)]) }, ct, 120);
+                return false;
+            }
+            ImeLookup.ForgetConversions([old.Reading, reading]);
+        }
+        store.ReplaceRegistered(old, reading, pos);
+        return true;
+    }
+
     /// <summary>登録済みの語を IME のユーザー辞書から消し、登録済みリストからも外す。戻り値は IME から消せた数</summary>
     public static int Unregister(IReadOnlyList<RegisteredWord> words, AppStore store)
     {

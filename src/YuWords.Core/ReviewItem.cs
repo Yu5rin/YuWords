@@ -15,9 +15,21 @@ public sealed class ReviewItem
         IsRegistered = registered;
         Register = !c.Unsure && c.Reading.Length > 0 && !registered;
         ImeConversion = c.ImeConversion;
-        if (c.Category == CandidateBuilder.PhraseCategory) Pos = "短縮よみ";
+        Pos = DefaultPos(c);
         ExtraReadings = c.ExtraReadings.Where(r => r.Length > 0 && r != Reading).Distinct().ToList();
     }
+
+    /// <summary>
+    /// 最初の品詞。定型文は短縮よみ。連絡先・アドレス帳のふりがなでよみを補った語と、辞書で人名と分かる語は人名、地名と分かる語は地名
+    /// </summary>
+    public static string DefaultPos(Candidate c) => c switch
+    {
+        { Category: CandidateBuilder.PhraseCategory } => "短縮よみ",
+        { ReadingSource: NameReadings.Source } => "人名",
+        { Category: "人名" } => "人名",
+        { Category: "地名" } => "地名",
+        _ => "名詞",
+    };
 
     /// <summary>本来のよみのほかに登録するよみ（短いよみ・別の言い方）</summary>
     public List<string> ExtraReadings { get; private set; } = [];

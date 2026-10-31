@@ -16,8 +16,9 @@ sealed partial class MainForm
 
     /// <param name="NewOnly">前回以降の差分。登録済みの語は一覧に出さない</param>
     /// <param name="OnLoaded">読み込みが終わったときの処理（前回の日時の記録など）</param>
+    /// <param name="TracksUsage">登録済みの語がまだ使われているかを、この文章で調べるか（ふだん書く文章＝Outlook の送信メールだけ）</param>
     sealed record Source(string Name, string Unit, Func<IProgress<int>, CancellationToken, List<List<string>>> Load,
-        bool NewOnly = false, Action? OnLoaded = null);
+        bool NewOnly = false, Action? OnLoaded = null, bool TracksUsage = false);
 
     Source OutlookSource(bool newOnly)
     {
@@ -27,6 +28,7 @@ sealed partial class MainForm
         return new(since is { } t ? $"Outlook の新しいメール（{t:M/d H:mm} 以降）" : "Outlook の送信済みメール", "メール",
             (p, ct) => OutlookMailSource.FetchSentMails(s.Days, s.MaxMails, p, ct, since),
             NewOnly: since != null,
+            TracksUsage: true,
             OnLoaded: () =>
             {
                 store.Settings.LastOutlookRead = started;
@@ -436,9 +438,13 @@ sealed partial class MainForm
             bool checkIme = store.Settings.CheckImeDictionary;
             var nameLookup = NameLookup();
             var learned = new Dictionary<string, string>(store.Learned);
+            var registeredWords = store.Registered.Select(r => r.Word).ToList();
+            HashSet<string>? used = null;
             var (docs, rows, imeWords) = await StaTask.Run(() =>
             {
                 var d = source.Load(docProgress, token);
+                // 登録済みの語がまだ文章に出てくるか（使わなくなった語を見つけるため）
+                if (source.TracksUsage && d.Count > 0 && registeredWords.Count > 0) used = WordUsage.Find(d, registeredWords, token);
                 // 追加のときは、前の取り込み元と合わせて数え直す（同じ語が両方に出れば合算される）
                 var combined = previous.Select(p => p.Docs).Append(d).SelectMany(x => x).ToList();   // 再開した一覧の分は空
                 var r = d.Count == 0 ? [] : Extraction.Run(combined, settings, excluded, progress, token, nameLookup, learned);
@@ -463,6 +469,7 @@ sealed partial class MainForm
             }
             if (source.NewOnly) all.RemoveAll(i => i.IsRegistered);   // 差分では、もう登録した語は出さない
             source.OnLoaded?.Invoke();
+            if (used != null) store.MarkUsed(used, DateTime.Now);
             loaded = [.. previous, new LoadedSource(source.Name, source.Unit, docs)];
             if (keepOld) loaded = [.. restoredSources.Select(n => new LoadedSource(n, "", [])), .. loaded];
             restoredSources = [];
