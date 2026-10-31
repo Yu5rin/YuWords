@@ -110,7 +110,9 @@ sealed partial class MainForm
             Col.Reading when i.Unsure => "よみは推測です。確認して直してください",
             Col.Reading when i.Source.ReadingSource == "前回の修正" && i.Reading == i.Source.Reading => "よみは前回自分で直したものです",
             Col.Reading when i.Source.ReadingSource.Length > 0 && i.Reading == i.Source.Reading => $"よみは{i.Source.ReadingSource}のふりがなです",
-            Col.Stars => "登録する価値の目安（IME で変換できない語・よく使う語ほど高い）",
+            Col.Stars => i.Affinity > 1.05 ? "登録する価値の目安（IME で変換できない語・よく使う語ほど高い）。これまでに登録した語に似た種類なので上げています"
+                       : i.Affinity < 0.95 ? "登録する価値の目安（IME で変換できない語・よく使う語ほど高い）。これまでに除外した語に似た種類なので下げています"
+                       : "登録する価値の目安（IME で変換できない語・よく使う語ほど高い）",
             _ when i.InImeDictionary => "IME のユーザー辞書に既にある語です",
             _ when store.IsRegisteredIn(GoogleIme.Target, i.Word, i.Reading) && !i.IsRegistered => "Google 日本語入力には書き出し済みです",
             _ when i.IsRegistered => "以前に登録した語です",
@@ -255,6 +257,8 @@ sealed partial class MainForm
     void Refilter()
     {
         ReviewItem.MarkVariants(all);
+        var pref = CurrentPreference();
+        foreach (var i in all) i.Affinity = pref.Factor(i.Word);
         ReviewItem.Rank(all);
         view = all.Where(filter.Matches).ToList();
         ApplySort();
@@ -263,6 +267,21 @@ sealed partial class MainForm
         lblGuide.Visible = all.Count == 0;
         grid.Invalidate();
         UpdateCounts();
+    }
+
+    Preference preference = Preference.None;
+    (int, int) preferenceKey = (-1, -1);
+
+    /// <summary>これまでに登録・除外した語から学んだ好み（登録済みの語・除外リストが変わったときだけ学び直す）</summary>
+    Preference CurrentPreference()
+    {
+        var key = (store.Registered.Count, store.Excluded.Count);
+        if (key != preferenceKey)
+        {
+            preference = Preference.Learn(store.Registered.Select(r => r.Word), store.Excluded);
+            preferenceKey = key;
+        }
+        return preference;
     }
 
     void SortBy(Col col)

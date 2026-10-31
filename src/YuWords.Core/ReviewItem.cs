@@ -59,6 +59,9 @@ public sealed class ReviewItem
         foreach (var r in ExtraReadings) yield return (r, Word, Pos);
     }
 
+    /// <summary>利用者の好み（これまでに登録・除外した語の傾向）によるおすすめ度の補正。1 なら補正なし</summary>
+    public double Affinity { get; set; } = 1.0;
+
     /// <summary>おすすめ度（★の数 1〜3）。登録済み・保留は 0</summary>
     public int Stars { get; set; }
 
@@ -76,7 +79,7 @@ public sealed class ReviewItem
             if (Category == CandidateBuilder.PhraseCategory) return s * 0.8;
             if (!ImeConvertible) s *= 3.0;
             if (Category == "部分語") s *= 0.8;
-            return s;
+            return s * Affinity;
         }
     }
 
