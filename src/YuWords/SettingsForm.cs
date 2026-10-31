@@ -301,6 +301,10 @@ sealed class SettingsForm : Form
         var restoreNote = Note("新しい PC では、前の PC で保存したこのファイル（または IME 取り込み形式のテキスト）を選んで、まとめて IME に登録できます。");
         t.Controls.Add(restoreNote);
         t.SetColumnSpan(restoreNote, 2);
+        var restore = new Button { Text = "ファイルを選んで IME に登録...", AutoSize = true };
+        restore.Click += async (_, _) => await RestoreFromFile();
+        t.Controls.Add(restore);
+
         var moveNote = Note("設定・除外リスト・よみのルール・直したよみも一緒に移すときは、引っ越しファイルにまとめて書き出します。新しい PC では「使い方」→「前の PC から引っ越す...」で読み込みます。");
         t.Controls.Add(moveNote);
         t.SetColumnSpan(moveNote, 2);
@@ -308,10 +312,6 @@ sealed class SettingsForm : Form
         move.Click += (_, _) => (Owner as MainForm)?.ExportMigration();
         t.Controls.Add(move);
         t.SetColumnSpan(move, 2);
-
-        var restore = new Button { Text = "ファイルを選んで IME に登録...", AutoSize = true };
-        restore.Click += async (_, _) => await RestoreFromFile();
-        t.Controls.Add(restore);
         return Page("持ち出し用辞書", t);
     }
 
