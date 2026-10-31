@@ -1,0 +1,17 @@
+bin/
+obj/
+.vs/
+*.user
+TestResults/
+
+# 辞書は約 250MB あるため Git に入れない（tools/get-dictionary.ps1 で取得）
+dict/
+
+# 出力物（実メール由来の語が入る）
+candidates*.csv
+ime_import*.txt
+__pycache__/
+dist/
+
+# 参照実装（社内のデータで試したプロトタイプ）は公開しない
+reference/

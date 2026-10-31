@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\YuWords.Core\YuWords.Core.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>0.4.0</Version>
+    <Product>YuWords</Product>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <Company>YUGO</Company>
+    <Description>自分の文章から頻出語を集めて Microsoft IME のユーザー辞書に登録する</Description>
+    <Copyright>Copyright © 2026 YUGO</Copyright>
+  </PropertyGroup>
+
+  <!-- 発行時は辞書を exe の隣（dict\unidic）に置く。開発中は親フォルダをたどって見つける -->
+  <ItemGroup>
+    <None Include="..\..\dict\unidic\**" LinkBase="dict\unidic" CopyToPublishDirectory="PreserveNewest" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
+</Project>
