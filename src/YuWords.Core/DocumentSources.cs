@@ -20,7 +20,14 @@ public static class DocumentSources
     /// <summary>BOM があればそれに従い、無ければ UTF-8 として読めるか試し、だめなら Shift_JIS として読む</summary>
     public static string ReadText(string path)
     {
-        var bytes = File.ReadAllBytes(path);
+        // Excel などで開かれていても読めるよう、書き込み中・置き換え中のファイルも共有して開く
+        byte[] bytes;
+        using (var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (var ms = new MemoryStream())
+        {
+            fs.CopyTo(ms);
+            bytes = ms.ToArray();
+        }
         if (bytes.Length >= 2 && (bytes[0] == 0xFF && bytes[1] == 0xFE || bytes[0] == 0xFE && bytes[1] == 0xFF)
             || bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
         {

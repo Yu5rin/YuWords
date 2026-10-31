@@ -277,7 +277,7 @@ sealed class SettingsForm : Form
         t.Controls.Add(restoreNote);
         t.SetColumnSpan(restoreNote, 2);
         var restore = new Button { Text = "ファイルを選んで IME に登録...", AutoSize = true };
-        restore.Click += (_, _) => RestoreFromFile();
+        restore.Click += async (_, _) => await RestoreFromFile();
         t.Controls.Add(restore);
         return Page("持ち出し用辞書", t);
     }
@@ -327,9 +327,9 @@ sealed class SettingsForm : Form
         }
     }
 
-    void RestoreFromFile()
+    async Task RestoreFromFile()
     {
-        if (RestoreHelper.FromFile(this, store, txtBackup.Text)) ReloadRegistered();
+        if (await RestoreHelper.FromFileAsync(this, store, txtBackup.Text)) ReloadRegistered();
     }
 
     /// <summary>IME のユーザー辞書の語を、登録済みの一覧（と持ち出し用辞書）に取り込む</summary>
@@ -392,7 +392,7 @@ sealed class SettingsForm : Form
         share.Click += (_, _) => ExportForSharing();
         new ToolTip().SetToolTip(share, "同僚に渡す・ほかの IME で使うための辞書ファイルを書き出します（Microsoft IME・Google 日本語入力・ATOK）");
         csvOut.Click += (_, _) => ExportRegisteredCsv();
-        csvIn.Click += (_, _) => RestoreFromFile();
+        csvIn.Click += async (_, _) => await RestoreFromFile();
         import.Click += async (_, _) => await ImportFromIme();
         new ToolTip().SetToolTip(import, "ユーザー辞書ツールなど YuWords 以外で登録した語も、持ち出し用辞書に入れます");
         edit.Click += async (_, _) => await EditRegistered();

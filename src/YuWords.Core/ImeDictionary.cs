@@ -186,6 +186,9 @@ public sealed class ImeDictionary : IDisposable
     /// <summary>最後の GetWords の結果コード（環境チェックで、空なのか読めなかったのかを見分けるため）</summary>
     public int LastGetWordsResult { get; private set; }
 
+    /// <summary>最後の GetWords で IME が返した語の数（取り出せた数ではなく、IME の言う数）</summary>
+    public long LastReportedCount { get; private set; }
+
     /// <summary>
     /// ユーザー辞書に入っている語（ユーザー登録分）をすべて読む。YuWords 以外の方法で入れた語も含む。
     /// 返ってきた領域は、文字の位置がその領域の中にあるかを確かめてから読む（並びの見込み違いで落ちないように）
@@ -201,8 +204,10 @@ public sealed class ImeDictionary : IDisposable
             int hr = dic.GetWords(IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, IFED_POS_ALL,
                 IFED_SELECT_READING | IFED_SELECT_DISPLAY | IFED_SELECT_POS, IFED_REG_USER, buf, size, out uint n);
             LastGetWordsResult = hr;
+            LastReportedCount = 0;
             for (int guard = 0; hr >= 0 && guard < 10000; guard++)
             {
+                LastReportedCount += n;
                 list.AddRange(ParseWords(buf, size, (int)Math.Min(n, (uint)(size / PackedWordSize)), names));
                 if (hr != IFED_S_MORE_ENTRIES) break;
                 hr = dic.NextWords(buf, size, out n);

@@ -65,4 +65,20 @@ public sealed class TeamDictionaryTests : IDisposable
         var w = Assert.Single(TeamDictionary.Read(PathCsv));
         Assert.Equal(("工符", "こうふ", "名詞"), (w.Word, w.Reading, w.Pos));
     }
+
+    [Fact]
+    public void Excelで開かれていても読めて書けないときは早めに知らせる()
+    {
+        TeamDictionary.Add(PathCsv, [("工符", "こうふ", "名詞")], "yamada");
+        // Excel は書き込み用に開いたまま、ほかの人には読むことだけを許す
+        using (new FileStream(PathCsv, FileMode.Open, FileAccess.ReadWrite, FileShare.Read))
+        {
+            Assert.Single(TeamDictionary.Read(PathCsv));
+            var ex = Assert.Throws<IOException>(() => TeamDictionary.Add(PathCsv, [("図締", "ずしめ", "名詞")], "tanaka"));
+            Assert.Contains("開いている", ex.Message);
+        }
+        // 書きかけのファイルを残さない
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(PathCsv)!, "*.tmp"));
+        Assert.Equal(1, TeamDictionary.Add(PathCsv, [("図締", "ずしめ", "名詞")], "tanaka"));
+    }
 }

@@ -54,9 +54,27 @@ public static class ImeWorker
         return res;
     }
 
+    static string WorkDir => Path.Combine(Path.GetTempPath(), "YuWords");
+
+    /// <summary>
+    /// 前に落ちたときに残った受け渡しのファイル（登録する語の一覧を含む）を消す。起動したときに呼ぶ。
+    /// ほかの YuWords が使っている最中のものを消さないよう、1時間より古いものだけ
+    /// </summary>
+    public static void CleanUpOldFiles()
+    {
+        try
+        {
+            if (!Directory.Exists(WorkDir)) return;
+            foreach (var f in Directory.EnumerateFiles(WorkDir, "ime_*.json"))
+                if (DateTime.Now - File.GetLastWriteTime(f) > TimeSpan.FromHours(1))
+                    try { File.Delete(f); } catch (Exception) { }
+        }
+        catch (Exception) { }
+    }
+
     static Response CallProcess(Request request, CancellationToken ct, int timeoutSeconds)
     {
-        var dir = Path.Combine(Path.GetTempPath(), "YuWords");
+        var dir = WorkDir;
         Directory.CreateDirectory(dir);
         var id = Guid.NewGuid().ToString("N");
         var inPath = Path.Combine(dir, $"ime_{id}_in.json");
@@ -121,13 +139,17 @@ public static class ImeWorker
     static void Verify(ImeDictionary dic, Response res)
     {
         if (res.Succeeded.Count == 0) return;
-        ApplyVerification(res, dic.GetUserWords().Select(w => (w.Word, w.Reading)).ToList());
+        var words = dic.GetUserWords().Select(w => (w.Word, w.Reading)).ToList();
+        // IME が「0 語」と返した（空の辞書）なら、登録したはずの語が1つも入っていないことが確かめられた
+        ApplyVerification(res, words, dictionaryEmpty: dic.LastGetWordsResult >= 0 && dic.LastReportedCount == 0);
     }
 
     /// <summary>読み直した辞書の語（present）と照らして、入っていなかった語を失敗に回す（テストのため分けてある）</summary>
-    internal static void ApplyVerification(Response res, IReadOnlyCollection<(string Word, string Reading)> words)
+    /// <param name="dictionaryEmpty">IME が辞書の語の数を 0 と返した（読めなかったのではなく、本当に空）</param>
+    internal static void ApplyVerification(Response res, IReadOnlyCollection<(string Word, string Reading)> words, bool dictionaryEmpty = false)
     {
-        if (words.Count == 0) return;   // 読み直せない（並びが合わず読めない など）。確かめられないので IME の返事を使う
+        // 語があるはずなのに1つも取り出せない（並びが合わず読めない など）。確かめられないので IME の返事を使う
+        if (words.Count == 0 && !dictionaryEmpty) return;
         var present = words.ToHashSet();
         res.Verified = true;
         foreach (var w in res.Succeeded.ToList())

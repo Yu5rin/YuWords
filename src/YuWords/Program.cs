@@ -64,6 +64,7 @@ static class Program
                     "YuWords", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             ImeRegistration.Enabled = store.Settings.UseImeDictionary;
+            ImeWorker.CleanUpOldFiles();
             Application.ThreadException += (_, e) =>
             {
                 Log.Error("予期しないエラー", e.Exception);

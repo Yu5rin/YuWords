@@ -241,6 +241,30 @@ public static class Updater
         catch (Exception) { return false; }
     }
 
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern uint GetOEMCP();
+
+    static int OemCodePage()
+    {
+        try { return (int)GetOEMCP(); }
+        catch (Exception) { return System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage; }
+    }
+
+    /// <summary>
+    /// アプリのフォルダが YuWords 専用か（配布物に無いものが多く置かれていないか）。
+    /// 更新では前の版としてフォルダごと控えるので、デスクトップなどにそのまま展開していると大量にコピーしてしまう
+    /// </summary>
+    public static bool IsDedicatedFolder(string appDir, string stagedDir, int allowedExtra = 5)
+    {
+        try
+        {
+            var shipped = Directory.EnumerateFileSystemEntries(stagedDir).Select(Path.GetFileName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            int extra = Directory.EnumerateFileSystemEntries(appDir).Select(Path.GetFileName).Count(n => !shipped.Contains(n));
+            return extra <= allowedExtra;
+        }
+        catch (Exception) { return true; }   // 調べられなければ止めない（差し替えの方で失敗を扱う）
+    }
+
     /// <summary>差し替える前の版の控え（「前の版に戻す」と、差し替えに失敗したときに使う）</summary>
     public static string PreviousDir => Path.Combine(UpdateDir, "previous");
 
@@ -261,13 +285,18 @@ public static class Updater
     public static string WriteApplyScript(string stagedDir, string appDir, int pid, string logPath,
         bool backup = true, Version? currentVersion = null, string startArgument = "--updated")
     {
-        var exe = Path.Combine(appDir, "YuWords.exe");
+        // バッチの中では % が変数の印になるので、パスの % は %% にする（100%ツール のようなフォルダ名）
+        static string E(string p) => p.Replace("%", "%%");
+        var exe = E(Path.Combine(appDir, "YuWords.exe"));
+        var previousDir = E(PreviousDir);
+        (stagedDir, appDir, logPath) = (E(stagedDir), E(appDir), E(logPath));
         var lines = new List<string>
         {
             "@echo off",
             "setlocal",
             ":wait",
-            $"tasklist /FI \"PID eq {pid}\" 2>nul | find \"{pid}\" >nul",
+            // PATH にほかの find（Git の Unix 版など）があっても使わないよう、Windows のものを場所を指定して呼ぶ
+            $"\"%SystemRoot%\\System32\\tasklist.exe\" /FI \"PID eq {pid}\" 2>nul | \"%SystemRoot%\\System32\\find.exe\" \"{pid}\" >nul",
             "if not errorlevel 1 (",
             "  ping -n 2 127.0.0.1 >nul",
             "  goto wait",
@@ -278,19 +307,19 @@ public static class Updater
             lines.AddRange(
             [
                 // 今の版を控える。控えられなければ差し替えない
-                $"if exist \"{PreviousDir}\" rmdir /s /q \"{PreviousDir}\"",
-                $"robocopy \"{appDir}\" \"{PreviousDir}\" /E /R:3 /W:1 /NP /NFL /NDL >> \"{logPath}\"",
+                $"if exist \"{previousDir}\" rmdir /s /q \"{previousDir}\"",
+                $"robocopy \"{appDir}\" \"{previousDir}\" /E /R:3 /W:1 /NP /NFL /NDL >> \"{logPath}\"",
                 "if %ERRORLEVEL% GEQ 8 (",
                 $"  start \"\" \"{exe}\" --update-failed",
                 "  exit /b 1",
                 ")",
-                $"> \"{Path.Combine(PreviousDir, VersionFile)}\" echo {currentVersion ?? CurrentVersion}",
+                $"> \"{previousDir}\\{VersionFile}\" echo {currentVersion ?? CurrentVersion}",
             ]);
         }
         lines.Add($"robocopy \"{stagedDir}\" \"{appDir}\" /E /XF {VersionFile} /R:10 /W:2 /NP /NFL /NDL >> \"{logPath}\"");
         lines.Add("if %ERRORLEVEL% GEQ 8 (");
         if (backup)
-            lines.Add($"  robocopy \"{PreviousDir}\" \"{appDir}\" /E /XF {VersionFile} /R:10 /W:2 /NP /NFL /NDL >> \"{logPath}\"");   // 元に戻す
+            lines.Add($"  robocopy \"{previousDir}\" \"{appDir}\" /E /XF {VersionFile} /R:10 /W:2 /NP /NFL /NDL >> \"{logPath}\"");   // 元に戻す
         lines.Add($"  start \"\" \"{exe}\" --update-failed");
         lines.Add("  exit /b 1");
         lines.Add(")");
@@ -298,9 +327,10 @@ public static class Updater
         var text = string.Join("\r\n", lines) + "\r\n";
         var path = Path.Combine(UpdateDir, "apply.cmd");
         Directory.CreateDirectory(UpdateDir);
-        // cmd は既定でシステムのコードページ（日本語 Windows なら Shift_JIS）で読む。表せない文字があるパスなら UTF-8 にする
+        // cmd は既定でシステムの OEM コードページ（日本語 Windows なら Shift_JIS）で読む。表せない文字があるパスなら UTF-8 にする。
+        // 利用者の地域の設定ではなく、システムの設定（GetOEMCP）で決める
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-        var oem = Encoding.GetEncoding(System.Globalization.CultureInfo.CurrentCulture.TextInfo.OEMCodePage,
+        var oem = Encoding.GetEncoding(OemCodePage(),
             EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
         try
         {

@@ -52,9 +52,11 @@ public static class TeamDictionary
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
         // ロック用のファイルを排他的に開いている間だけ「読む → 合わせる → 書く」を行う（共有フォルダでも 1 人ずつになる）
         var lockPath = path + ".lock";
+        int replaceFailures = 0;
         for (int attempt = 0; ; attempt++)
         {
             FileStream? lockFile = null;
+            string? tmp = null;
             try
             {
                 lockFile = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 1, FileOptions.DeleteOnClose);
@@ -64,17 +66,26 @@ public static class TeamDictionary
                 var added = adding.Where(w => have.Add((w.Word, w.Reading)))
                     .Select(w => new TeamWord(w.Word, w.Reading, w.Pos, user, today)).ToList();
                 if (added.Count == 0) return 0;
-                var tmp = path + $".{Guid.NewGuid():N}.tmp";
+                tmp = path + $".{Guid.NewGuid():N}.tmp";
                 Write(tmp, current.Concat(added));
-                File.Move(tmp, path, true);
+                try { File.Move(tmp, path, true); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    // ロックは取れたのに置き換えられない＝誰かが Excel などで開いている。長く待っても開くまで閉じないので早めにあきらめる
+                    if (++replaceFailures >= 5)
+                        throw new IOException("チームの辞書を誰かが Excel などで開いているため、書き込めませんでした。閉じてもらってから、もう一度足してください。", e);
+                    throw;
+                }
+                tmp = null;
                 return added.Count;
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException && attempt < 40)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException && attempt < 40 && replaceFailures < 5)
             {
                 Thread.Sleep(100 + 50 * Math.Min(attempt, 10));   // ほかの人が書いている（最大でおよそ 20 秒待つ）
             }
             finally
             {
+                if (tmp != null) try { File.Delete(tmp); } catch (Exception) { }   // 置き換えられなかった書きかけを残さない
                 lockFile?.Dispose();
             }
         }

@@ -81,4 +81,44 @@ public sealed class UpdateApplyTests : IDisposable
         Assert.Equal("古い", File.ReadAllText(Path.Combine(app, "old.txt")));
         Assert.True(File.Exists(Path.Combine(app, "YuWords.exe")));
     }
+
+    [Fact]
+    public void パーセントを含むフォルダでも差し替えられる()
+    {
+        var app = Path.Combine(root, "100%ツール", "YuWords");
+        var staged = Path.Combine(root, "staging%PATH%", "YuWords");
+        Directory.CreateDirectory(app);
+        Directory.CreateDirectory(staged);
+        var whoami = Path.Combine(Environment.SystemDirectory, "whoami.exe");
+        File.Copy(whoami, Path.Combine(app, "YuWords.exe"));
+        File.Copy(whoami, Path.Combine(staged, "YuWords.exe"));
+        File.WriteAllText(Path.Combine(app, "old.txt"), "古い");
+        File.WriteAllText(Path.Combine(staged, "old.txt"), "新しい");
+        using var done = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit") { CreateNoWindow = true, UseShellExecute = false })!;
+        done.WaitForExit();
+        var script = Updater.WriteApplyScript(staged, app, done.Id, Path.Combine(root, "apply.log"), backup: true, new Version(0, 5, 0));
+        using var p = Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"\"{script}\"\"") { CreateNoWindow = true, UseShellExecute = false })!;
+        Assert.True(p.WaitForExit(30000));
+        Assert.Equal(0, p.ExitCode);
+        Assert.Equal("新しい", File.ReadAllText(Path.Combine(app, "old.txt")));
+    }
+
+    [Fact]
+    public void ほかのものが多く置かれたフォルダは専用のフォルダとみなさない()
+    {
+        var app = Path.Combine(root, "desktop");
+        var staged = Path.Combine(root, "staging", "YuWords");
+        Directory.CreateDirectory(app);
+        Directory.CreateDirectory(Path.Combine(staged, "dict"));
+        foreach (var n in new[] { "YuWords.exe", "YuWords.dll" })
+        {
+            File.WriteAllText(Path.Combine(app, n), "");
+            File.WriteAllText(Path.Combine(staged, n), "");
+        }
+        Directory.CreateDirectory(Path.Combine(app, "dict"));
+        File.WriteAllText(Path.Combine(app, "メモ.txt"), "");
+        Assert.True(Updater.IsDedicatedFolder(app, staged));
+        for (int i = 0; i < 6; i++) File.WriteAllText(Path.Combine(app, $"資料{i}.xlsx"), "");
+        Assert.False(Updater.IsDedicatedFolder(app, staged));
+    }
 }

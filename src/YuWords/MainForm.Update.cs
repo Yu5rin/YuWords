@@ -34,7 +34,9 @@ sealed partial class MainForm
             s.LastUpdateCheck = DateTime.Now;
             store.SaveSettings();
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException)
+        // プロキシのブロック画面（HTML）など、思っていない返事が来たときの JSON の例外も、確かめられなかったとして扱う
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
         {
             Log.Error("新しい版を確かめられませんでした", ex);
             if (manual)
@@ -160,6 +162,19 @@ sealed partial class MainForm
             SetBusy(false);
         }
 
+        if (!Updater.IsDedicatedFolder(appDir, staged))
+        {
+            Log.Error($"アプリのフォルダに YuWords 以外のものが多いので更新しません（{appDir}）");
+            MessageBox.Show(this,
+                $"YuWords のフォルダに、ほかのファイルやフォルダがたくさん置かれています。
+{appDir}
+
+" +
+                "更新では今の版をフォルダごと控えるため、このままでは更新しません。" +
+                "YuWords 専用のフォルダ（例: ドキュメント\YuWords）を作って YuWords のファイルを移してから、もう一度更新してください。",
+                "更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
         if (MessageBox.Show(this, $"v{info.Version} の準備ができました。YuWords を閉じて差し替え、起動し直します。",
                 "更新", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK)
             return;
@@ -241,7 +256,8 @@ sealed partial class MainForm
                     foreach (var f in Directory.GetFiles(Updater.UpdateDir, "*.zip")) File.Delete(f);
                 }
                 catch (Exception) { }
-                if (rolledBack) { store.Settings.SkippedVersion = ""; store.SaveSettings(); }
+                // 新しい版に上がったら「知らせない」は要らない。戻したときは、戻す前の版を知らせないままにする
+                if (!rolledBack) { store.Settings.SkippedVersion = ""; store.SaveSettings(); }
             }
             else
             {

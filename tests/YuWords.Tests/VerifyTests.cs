@@ -30,6 +30,18 @@ public sealed class VerifyTests
     }
 
     [Fact]
+    public void 辞書が本当に空なら登録した語はすべて入っていない()
+    {
+        var res = new ImeWorker.Response { Ok = true, Registered = 2 };
+        res.Succeeded.AddRange([W("こうふ", "工符"), W("ずしめ", "図締")]);
+        ImeWorker.ApplyVerification(res, [], dictionaryEmpty: true);
+        Assert.True(res.Verified);
+        Assert.Empty(res.Succeeded);
+        Assert.Equal(2, res.NotFound.Count);
+        Assert.Equal(0, res.Registered);
+    }
+
+    [Fact]
     public void 一語も入らなければ効いていないとみなす()
     {
         var r = new RegistrationReport();

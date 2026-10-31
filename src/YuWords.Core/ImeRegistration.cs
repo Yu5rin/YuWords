@@ -52,12 +52,12 @@ public static class ImeRegistration
     public static string SelfTest() => ImeWorker.Call(new ImeWorker.Request { Op = "selftest" }, timeoutSeconds: 60).SelfTest;
 
     /// <summary>IME のユーザー辞書の語（よみ・表記）。開けなければ null</summary>
-    public static HashSet<(string Word, string Reading)>? ReadUserDictionary()
+    public static HashSet<(string Word, string Reading)>? ReadUserDictionary(CancellationToken ct = default)
     {
         if (!Enabled) return null;
         try
         {
-            return ImeWorker.Call(new ImeWorker.Request { Op = "read" }).Words.Select(w => (w.Text, w.Reading)).ToHashSet();
+            return ImeWorker.Call(new ImeWorker.Request { Op = "read" }, ct, 120).Words.Select(w => (w.Text, w.Reading)).ToHashSet();
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
@@ -70,7 +70,7 @@ public static class ImeRegistration
     public static int ImportUserDictionary(AppStore store)
     {
         if (!Enabled) throw new InvalidOperationException(Disabled);
-        var res = ImeWorker.Call(new ImeWorker.Request { Op = "read" });
+        var res = ImeWorker.Call(new ImeWorker.Request { Op = "read" }, timeoutSeconds: 120);
         return store.AddRegistered(res.Words.Select(w => (w.Text, w.Reading, w.Pos)));
     }
 
@@ -107,7 +107,7 @@ public static class ImeRegistration
         if (msime.Count > 0)
         {
             if (!Enabled) throw new InvalidOperationException(Disabled);
-            n = ImeWorker.Call(new ImeWorker.Request { Op = "delete", Words = ToWords(msime.Select(w => (w.Reading, w.Word, w.Pos))) }).Deleted;
+            n = ImeWorker.Call(new ImeWorker.Request { Op = "delete", Words = ToWords(msime.Select(w => (w.Reading, w.Word, w.Pos))) }, timeoutSeconds: 300).Deleted;
         }
         store.RemoveRegistered(words);
         ImeLookup.ForgetConversions(words.Select(w => w.Reading));

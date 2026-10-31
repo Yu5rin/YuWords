@@ -117,7 +117,7 @@ public sealed class UpdaterTests : IDisposable
         var path = Updater.WriteApplyScript(@"C:\staging\YuWords", @"C:\Users\me\ソフト\YuWords", 1234, @"C:\log.txt");
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         var text = File.ReadAllText(path, Encoding.GetEncoding(932));
-        Assert.Contains("tasklist /FI \"PID eq 1234\"", text);
+        Assert.Contains(@"""%SystemRoot%\System32\tasklist.exe"" /FI ""PID eq 1234""", text);
         Assert.Contains(@"robocopy ""C:\staging\YuWords"" ""C:\Users\me\ソフト\YuWords"" /E", text);
         Assert.Contains(@"start """" ""C:\Users\me\ソフト\YuWords\YuWords.exe"" --updated", text);
     }

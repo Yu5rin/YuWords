@@ -87,7 +87,7 @@ sealed partial class MainForm : Form
         CheckForUpdatesOnStartup();
         CheckTeamDictionaryOnStartup();
         if (!store.Settings.Welcomed && store.Registered.Count == 0 && all.Count == 0)
-            Shown += (_, _) => RestoreHelper.Welcome(this, store);
+            Shown += async (_, _) => await RestoreHelper.Welcome(this, store);
         UpdateCounts();
     }
 

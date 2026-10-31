@@ -5,8 +5,8 @@ namespace YuWords;
 /// <summary>持ち出し用辞書（IME 取り込み形式のテキスト）を選んで IME に登録する。新しい PC での復元用</summary>
 static class RestoreHelper
 {
-    /// <summary>登録まで進んだら true</summary>
-    public static bool FromFile(IWin32Window owner, AppStore store, string? initialPath = null)
+    /// <summary>登録まで進んだら true。登録は別のスレッドで行い、その間は owner を操作できないようにする（画面は固めない）</summary>
+    public static async Task<bool> FromFileAsync(Form owner, AppStore store, string? initialPath = null)
     {
         using var dlg = new OpenFileDialog
         {
@@ -31,28 +31,35 @@ static class RestoreHelper
                 MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK)
             return false;
 
-        var cursor = Cursor.Current;
+        owner.UseWaitCursor = true;
+        owner.Enabled = false;
         try
         {
-            Cursor.Current = Cursors.WaitCursor;
-            var r = ImeRegistration.Run(words, store);
-            Cursor.Current = cursor;
+            var r = await StaTask.Run(() => ImeRegistration.Run(words, store));
+            owner.Enabled = true;
+            owner.UseWaitCursor = false;
             MessageBox.Show(owner, $"登録 {r.Registered} 語、既にあったもの {r.Skipped} 語、失敗 {r.Failed.Count} 語",
                 "IME に登録", MessageBoxButtons.OK, r.Failed.Count > 0 ? MessageBoxIcon.Warning : MessageBoxIcon.Information);
             return true;
         }
         catch (InvalidOperationException ex)
         {
-            Cursor.Current = cursor;
+            owner.Enabled = true;
+            owner.UseWaitCursor = false;
             MessageBox.Show(owner,
                 $"IME に直接登録できませんでした。\n{ex.Message}\n\nこのファイルは Microsoft IME のユーザー辞書ツールの［ツール］→［テキスト ファイルからの登録］で取り込めます。",
                 "IME に登録", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return false;
         }
+        finally
+        {
+            owner.Enabled = true;
+            owner.UseWaitCursor = false;
+        }
     }
 
     /// <summary>初めて起動したときの案内。前の PC から移ってきた人には、持ち出し用辞書の登録を勧める</summary>
-    public static void Welcome(IWin32Window owner, AppStore store)
+    public static async Task Welcome(Form owner, AppStore store)
     {
         store.Settings.Welcomed = true;
         store.SaveSettings();
@@ -62,6 +69,6 @@ static class RestoreHelper
             "［はい］そのファイルを選んで、IME にまとめて登録します。\n" +
             "［いいえ］「Outlook から読み込む」などで、自分の文章から語を集めるところから始めます。",
             "YuWords", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-        if (ans == DialogResult.Yes) FromFile(owner, store);
+        if (ans == DialogResult.Yes) await FromFileAsync(owner, store);
     }
 }

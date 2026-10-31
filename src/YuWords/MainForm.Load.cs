@@ -191,7 +191,7 @@ sealed partial class MainForm
             var (rows, imeWords) = await StaTask.Run(() =>
             {
                 var r = Extraction.Run(docs, settings, excluded, progress, token, nameLookup, learned);
-                return (r, checkIme && r.Count > 0 ? ImeRegistration.ReadUserDictionary() : null);
+                return (r, checkIme && r.Count > 0 ? ImeRegistration.ReadUserDictionary(token) : null);
             });
             var old = all.GroupBy(i => i.Source.Word).ToDictionary(g => g.Key, g => g.First());
             int before = all.Count;
@@ -297,10 +297,15 @@ sealed partial class MainForm
             "一覧に足しますか？\n［はい］一覧に足す　［いいえ］今回は足さない（次からは知らせない）　［キャンセル］あとで",
             "チームの辞書", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Information);
         if (ans == DialogResult.Cancel) return;
-        store.MarkTeamSeen(fresh.Select(w => TeamDictionary.Key(w.Word, w.Reading)));
         if (ans == DialogResult.Yes)
+        {
             await AddWordsAsync("チームの辞書", fresh.Select(w => new DictWord(w.Reading, w.Word, w.Pos,
                 w.AddedBy.Length > 0 ? $"{w.AddedBy} さんが {w.AddedAt} に追加" : "")).ToList(), "チーム辞書");
+            // 一覧に入った語だけを知らせ済みにする（ほかの読み込み中・中止で入らなかった語は、次にまた知らせる）
+            var nowInList = all.Select(i => i.Source.Word).ToHashSet();
+            fresh = fresh.Where(w => nowInList.Contains(w.Word)).ToList();
+        }
+        store.MarkTeamSeen(fresh.Select(w => TeamDictionary.Key(w.Word, w.Reading)));
     }
 
     /// <summary>選んだ行（よみのある語）をチームの辞書に足す</summary>
@@ -367,7 +372,7 @@ sealed partial class MainForm
             imeWords = await StaTask.Run(() =>
             {
                 ImeLookup.Fill(candidates, token);
-                return checkIme ? ImeRegistration.ReadUserDictionary() : null;
+                return checkIme ? ImeRegistration.ReadUserDictionary(token) : null;
             });
         }
         catch (OperationCanceledException)
@@ -448,7 +453,7 @@ sealed partial class MainForm
                 // 追加のときは、前の取り込み元と合わせて数え直す（同じ語が両方に出れば合算される）
                 var combined = previous.Select(p => p.Docs).Append(d).SelectMany(x => x).ToList();   // 再開した一覧の分は空
                 var r = d.Count == 0 ? [] : Extraction.Run(combined, settings, excluded, progress, token, nameLookup, learned);
-                var ime = checkIme && r.Count > 0 ? ImeRegistration.ReadUserDictionary() : null;
+                var ime = checkIme && r.Count > 0 ? ImeRegistration.ReadUserDictionary(token) : null;
                 return (d, r, ime);
             });
 
