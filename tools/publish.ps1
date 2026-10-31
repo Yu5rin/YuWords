@@ -36,6 +36,7 @@ Get-ChildItem $out -Filter *.pdb | Remove-Item
 Copy-Item (Join-Path $root 'THIRD_PARTY_NOTICES.md') $out
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $out 'LICENSE.txt')
 Copy-Item (Join-Path $root 'README.md') $out
+Copy-Item (Join-Path $root 'docs\DEPLOYMENT.md') (Join-Path $out '社内で使うときの説明.md')
 Copy-Item (Join-Path $root 'licenses') (Join-Path $out 'licenses') -Recurse
 
 $zip = Join-Path $root "dist\YuWords-$version-win-x64.zip"
