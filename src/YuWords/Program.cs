@@ -137,7 +137,8 @@ static class Program
         form.Shown += async (_, _) =>
         {
             // 「;」で区切ると、2つ目以降は「今の一覧に追加」で読み込む
-            foreach (var (path, i) in mailsPath.Split(';').Select((p, i) => (p, i)))
+            // 「empty」なら何も読み込まない（空の一覧の案内を確かめる）
+            foreach (var (path, i) in mailsPath.Split(';').Where(p => p != "empty").Select((p, i) => (p, i)))
             {
                 form.SetAppend(i > 0);
                 await (Directory.Exists(path) ? form.LoadFolderAsync(path) : form.LoadTextAsync(path));

@@ -17,6 +17,17 @@ sealed partial class MainForm : Form
     CancellationTokenSource? cts;
 
     readonly DataGridView grid = new();
+    readonly Label lblGuide = new()
+    {
+        AutoSize = true, Font = new Font("Yu Gothic UI", 11f),
+        Text = "YuWords の使い方\n\n" +
+               "① 取り込む　　上の「Outlook から読み込む」で送信メールから語を集めます\n" +
+               "　　　　　　　（Obsidian のノート・Word・Excel の用語集は「ほかから読み込む」）\n\n" +
+               "② 確かめる　　おすすめ順に並んだ語の、よみと登録チェックを確かめます\n" +
+               "　　　　　　　（★の多い語ほど登録する価値が高く、黄色の行は推測のよみなので確かめてください）\n\n" +
+               "③ 登録する　　下の「IME に登録」で、チェックした語を Microsoft IME に登録します\n\n" +
+               "前の PC から移ってきたときは「使い方」→「前の PC から引っ越す...」",
+    };
     readonly ToolStripSplitButton btnOutlook = new("Outlook から読み込む");
     readonly ToolStripMenuItem mnuOutlookNew = new("前回以降の新しいメールだけ読み込む");
     readonly CheckBox chkUnreviewed = new() { Text = "未確認のみ", AutoSize = true };
@@ -296,6 +307,14 @@ sealed partial class MainForm : Form
         grid.Dock = DockStyle.Fill;
         rtbExamples.Height = Dpi.Scale(110);
         Controls.Add(grid);
+        // 一覧が空のときは、表の上に始め方の案内を出す
+        lblGuide.BackColor = Theme.Current.Back;
+        lblGuide.ForeColor = Theme.Current.Muted;
+        grid.Controls.Add(lblGuide);
+        void CenterGuide() => lblGuide.Location = new Point(Math.Max(0, (grid.ClientSize.Width - lblGuide.Width) / 2),
+                                                            Math.Max(0, (grid.ClientSize.Height - lblGuide.Height) / 2));
+        grid.Resize += (_, _) => CenterGuide();
+        lblGuide.SizeChanged += (_, _) => CenterGuide();
         // 表の下に、選んだ語の例文を出す欄（境目をドラッグして高さを変えられる）
         Controls.Add(exampleSplitter);
         Controls.Add(rtbExamples);

@@ -260,6 +260,7 @@ sealed partial class MainForm
         ApplySort();
         grid.RowCount = 0;
         grid.RowCount = view.Count;
+        lblGuide.Visible = all.Count == 0;
         grid.Invalidate();
         UpdateCounts();
     }
