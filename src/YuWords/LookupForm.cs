@@ -24,9 +24,9 @@ sealed class LookupForm : Form
         KeyPreview = true;
 
         list.Columns.Add("語句", Dpi.Scale(150));
-        list.Columns.Add("よみ", Dpi.Scale(140));
-        list.Columns.Add("意味・メモ", Dpi.Scale(230));
-        list.Columns.Add("", Dpi.Scale(80));
+        list.Columns.Add("よみ", Dpi.Scale(130));
+        list.Columns.Add("意味・メモ", Dpi.Scale(200));
+        list.Columns.Add("", Dpi.Scale(75));
         var t = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3, Padding = new Padding(10) };
         t.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         t.RowStyles.Add(new RowStyle(SizeType.Percent, 100));

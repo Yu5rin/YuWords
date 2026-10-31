@@ -113,6 +113,26 @@ static class Program
             Directory.Delete(dir, true);
             return;
         }
+        if (mailsPath == "lookup")
+        {
+            // 用語を引く画面を、架空の語とメモで保存する
+            var s = new AppStore(dir);
+            s.AddRegistered([("MOP", "もっぷ", "名詞"), ("MOP", "えむおーぴー", "名詞"), ("図締", "ずしめ", "名詞"), ("XYZ設検課", "えっくすわいぜっとせつけんか", "固有名詞"), ("工符", "こうふ", "名詞")]);
+            s.SetNote("MOP", "遠隔発報装置");
+            s.SetNote("図締", "図面の締め切り");
+            s.SetNote("工符", "工事の符号表");
+            using var f = new LookupForm(s);
+            f.Shown += (_, _) =>
+            {
+                using var bmp = new Bitmap(f.Width, f.Height);
+                f.DrawToBitmap(bmp, new Rectangle(Point.Empty, f.Size));
+                bmp.Save(pngPath, System.Drawing.Imaging.ImageFormat.Png);
+                f.Close();
+            };
+            f.ShowDialog();
+            Directory.Delete(dir, true);
+            return;
+        }
         if (mailsPath == "stats")
         {
             // 効果の画面を、架空の登録済みの語で保存する
