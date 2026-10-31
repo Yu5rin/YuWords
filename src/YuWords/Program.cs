@@ -20,6 +20,7 @@ static class Program
             return;
         }
         ImeWorker.ExecutablePath = Application.ExecutablePath;
+        AppStore.DefaultsPath = Path.Combine(AppContext.BaseDirectory, AppStore.DefaultsFileName);
         ApplicationConfiguration.Initialize();
         if (args.Length == 3 && args[0] == "--screenshot")
         {

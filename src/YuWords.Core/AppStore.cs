@@ -178,11 +178,56 @@ public sealed class AppStore
     public static string DefaultDir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "YuWords");
 
-    public AppStore(string? dir = null)
+    /// <summary>
+    /// 配布物の隣に置く既定の設定（yuwords.defaults.json）の場所。社内で配るとき、チームの辞書や更新の確認先を全員にそろえるため。
+    /// settings.json がまだ無い（初めて起動した）ときだけ読む。設定フォルダを指定しない（ふだんの場所を使う）ときに使う
+    /// </summary>
+    public static string? DefaultsPath { get; set; }
+
+    public const string DefaultsFileName = "yuwords.defaults.json";
+
+    /// <summary>既定の設定に書き出す項目（組織でそろえるもの。個人の場所や画面の状態は入れない）</summary>
+    static readonly string[] DefaultsKeys =
+    [
+        nameof(AppSettings.TeamDictionaryPath), nameof(AppSettings.TeamNotify),
+        nameof(AppSettings.UpdateCheck), nameof(AppSettings.UpdateSource), nameof(AppSettings.UpdateFolder),
+        nameof(AppSettings.UseContactReadings), nameof(AppSettings.UseGalReadings),
+        nameof(AppSettings.UseImeDictionary), nameof(AppSettings.CheckImeDictionary), nameof(AppSettings.Extractor),
+    ];
+
+    /// <summary>今の設定のうち組織でそろえる項目を、既定の設定ファイルとして書き出す</summary>
+    public void WriteDefaults(string path)
+    {
+        var all = JsonSerializer.SerializeToNode(Settings, Json)!.AsObject();
+        var obj = new System.Text.Json.Nodes.JsonObject();
+        foreach (var k in DefaultsKeys)
+            if (all[k] is { } v) obj[k] = v.DeepClone();
+        File.WriteAllText(path, obj.ToJsonString(Json));
+    }
+
+    /// <summary>既定の設定を読む。無い・壊れているときは null（配布先のフォルダは書き込めないこともあるので退避はしない）</summary>
+    static AppSettings? LoadDefaults(string? p)
+    {
+        if (p == null || !File.Exists(p)) return null;
+        try
+        {
+            var s = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(p), Json);
+            if (s != null) Log.Info($"既定の設定を読みました（{p}）");
+            return s;
+        }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
+        {
+            Log.Error("既定の設定を読めませんでした", e);
+            return null;
+        }
+    }
+
+    /// <param name="defaultsPath">既定の設定ファイル。省略すると、設定フォルダを指定しないときだけ <see cref="DefaultsPath"/> を使う</param>
+    public AppStore(string? dir = null, string? defaultsPath = null)
     {
         Dir = dir ?? DefaultDir;
         Directory.CreateDirectory(Dir);
-        Settings = Load<AppSettings>(SettingsPath) ?? new();
+        Settings = Load<AppSettings>(SettingsPath) ?? (File.Exists(SettingsPath) ? null : LoadDefaults(defaultsPath ?? (dir == null ? DefaultsPath : null))) ?? new();
         Excluded = new(Load<List<string>>(ExcludedPath) ?? [], StringComparer.Ordinal);
         Registered = Load<List<RegisteredWord>>(RegisteredPath) ?? [];
         Held = (Load<List<HeldWord>>(HeldPath) ?? []).GroupBy(h => h.Word).ToDictionary(g => g.Key, g => g.Last());

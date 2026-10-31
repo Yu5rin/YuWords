@@ -183,7 +183,32 @@ sealed class SettingsForm : Form
         Span(chkTeamNotify);
         Span(Note("語を足すには、確認画面で語を選んで右クリック →「チームの辞書に足す」。\n" +
                   "新しい語は、起動したときか「ほかから読み込む」→「チームの辞書の新しい語」で一覧に足せます。"));
+        Span(Note($"社内で配るとき: 今の設定（チームの辞書・更新の確認先・抽出の設定など）を {AppStore.DefaultsFileName} に書き出し、" +
+                  "配布物の YuWords.exe と同じフォルダに置くと、初めて起動した人はその設定で始まります。"));
+        var defaults = new Button { Text = "配布用の既定の設定を書き出す...", AutoSize = true };
+        defaults.Click += (_, _) => WriteDefaults();
+        Span(defaults);
         return Page("チーム", t);
+    }
+
+    void WriteDefaults()
+    {
+        if (!Save()) return;   // 画面で変えたところも入れる
+        using var dlg = new SaveFileDialog
+        {
+            Title = "配布用の既定の設定", FileName = AppStore.DefaultsFileName, Filter = "JSON (*.json)|*.json",
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+        try
+        {
+            store.WriteDefaults(dlg.FileName);
+            MessageBox.Show(this, $"書き出しました。\n{dlg.FileName}\n\n配布物の YuWords.exe と同じフォルダに {AppStore.DefaultsFileName} という名前で置いてください。" +
+                "すでに使っている人の設定は変わりません（初めて起動したときだけ読みます）。", "既定の設定");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, ex.Message, "既定の設定", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
     }
 
     readonly CheckBox chkUpdate = new() { Text = "起動したときに新しい版を確かめる（1日に1回まで）", AutoSize = true, Margin = new Padding(3, 6, 3, 6) };
