@@ -166,12 +166,9 @@ sealed partial class MainForm
         {
             Log.Error($"アプリのフォルダに YuWords 以外のものが多いので更新しません（{appDir}）");
             MessageBox.Show(this,
-                $"YuWords のフォルダに、ほかのファイルやフォルダがたくさん置かれています。
-{appDir}
-
-" +
+                $"YuWords のフォルダに、ほかのファイルやフォルダがたくさん置かれています。\n{appDir}\n\n" +
                 "更新では今の版をフォルダごと控えるため、このままでは更新しません。" +
-                "YuWords 専用のフォルダ（例: ドキュメント\YuWords）を作って YuWords のファイルを移してから、もう一度更新してください。",
+                "YuWords 専用のフォルダ（例: ドキュメント\\YuWords）を作って YuWords のファイルを移してから、もう一度更新してください。",
                 "更新", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
