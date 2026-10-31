@@ -8,6 +8,11 @@ sealed partial class MainForm
 {
     // ===== IME への登録 =====
 
+    /// <summary>IME で変換できなかった語（変換結果が分かっていて、表記と違う。定型文は除く）</summary>
+    static HashSet<string> Rescued(IEnumerable<ReviewItem> items) =>
+        items.Where(i => i.Category != CandidateBuilder.PhraseCategory && i.ImeConversion.Length > 0 && !i.ImeConvertible)
+             .Select(i => i.Word).ToHashSet();
+
     async Task RegisterAsync()
     {
         grid.EndEdit();
@@ -23,6 +28,7 @@ sealed partial class MainForm
         SetBusy(true);
         SetStatus($"IME に登録中... 0 / {items.Count}");
         var words = items.SelectMany(i => i.Entries()).ToList();
+        var rescued = Rescued(items);   // 登録で変換が変わる前に覚えておく
         var progress = new Progress<int>(n => SetStatus($"IME に登録中... {n} / {items.Count}"));
         bool fallback = false;
         try
@@ -31,6 +37,7 @@ sealed partial class MainForm
             var report = await StaTask.Run(() => ImeRegistration.Run(words, store, progress, token));
             Log.Info($"IME に登録: 登録 {report.Registered}、既存 {report.Skipped}、失敗 {report.Failed.Count}");
             var ok = report.Succeeded.ToHashSet();
+            store.MarkRescued(report.Succeeded.Select(w => w.Word).Where(rescued.Contains));
             // 登録した語が、そのよみで変換できるようになったかを確かめ直す
             int converts = 0, checkedCount = 0;
             foreach (var i in items.Where(i => ok.Contains((i.Reading, i.Word, i.Pos))))
@@ -119,6 +126,7 @@ sealed partial class MainForm
         {
             var (path, n) = GoogleIme.Export(store.Dir, items.SelectMany(i => i.Entries()));
             store.AddRegistered(items.SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos)), GoogleIme.Target);
+            store.MarkRescued(Rescued(items));
             try { Clipboard.SetText(path); } catch (Exception) { }
             Log.Info($"Google 日本語入力用に {n} 語を書き出し");
             var error = GoogleIme.OpenDictionaryTool();
@@ -196,6 +204,7 @@ sealed partial class MainForm
                 return true;
             }
             int added = store.AddRegistered(items.SelectMany(i => i.Entries()).Select(e => (e.Word, e.Reading, e.Pos)));
+            store.MarkRescued(Rescued(items));
             foreach (var i in items) (i.IsRegistered, i.Register, i.Held) = (true, false, false);
             grid.Invalidate();
             ScheduleSave();

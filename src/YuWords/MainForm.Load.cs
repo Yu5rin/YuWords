@@ -444,12 +444,12 @@ sealed partial class MainForm
             var nameLookup = NameLookup();
             var learned = new Dictionary<string, string>(store.Learned);
             var registeredWords = store.Registered.Select(r => r.Word).ToList();
-            HashSet<string>? used = null;
+            Dictionary<string, int>? used = null;
             var (docs, rows, imeWords) = await StaTask.Run(() =>
             {
                 var d = source.Load(docProgress, token);
                 // 登録済みの語がまだ文章に出てくるか（使わなくなった語を見つけるため）
-                if (source.TracksUsage && d.Count > 0 && registeredWords.Count > 0) used = WordUsage.Find(d, registeredWords, token);
+                if (source.TracksUsage && d.Count > 0 && registeredWords.Count > 0) used = WordUsage.Count(d, registeredWords, token);
                 // 追加のときは、前の取り込み元と合わせて数え直す（同じ語が両方に出れば合算される）
                 var combined = previous.Select(p => p.Docs).Append(d).SelectMany(x => x).ToList();   // 再開した一覧の分は空
                 var r = d.Count == 0 ? [] : Extraction.Run(combined, settings, excluded, progress, token, nameLookup, learned);
@@ -474,7 +474,7 @@ sealed partial class MainForm
             }
             if (source.NewOnly) all.RemoveAll(i => i.IsRegistered);   // 差分では、もう登録した語は出さない
             source.OnLoaded?.Invoke();
-            if (used != null) store.MarkUsed(used, DateTime.Now);
+            if (used != null) store.MarkUsed(used, docs.Count, DateTime.Now);
             loaded = [.. previous, new LoadedSource(source.Name, source.Unit, docs)];
             if (keepOld) loaded = [.. restoredSources.Select(n => new LoadedSource(n, "", [])), .. loaded];
             restoredSources = [];

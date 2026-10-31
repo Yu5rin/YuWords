@@ -113,6 +113,27 @@ static class Program
             Directory.Delete(dir, true);
             return;
         }
+        if (mailsPath == "stats")
+        {
+            // 効果の画面を、架空の登録済みの語で保存する
+            var s = new AppStore(dir);
+            string[] sample = ["XYZ設検課", "工符", "図締", "盤検", "検了", "桐電盤", "高田", "中野", "MOP", "拡メル", "リプレース", "設検課"];
+            s.AddRegistered(sample.Select((w, i) => (w, $"よみ{i}", i is 6 or 7 ? "人名" : i == 8 ? "固有名詞" : "名詞")));
+            for (int i = 0; i < s.Registered.Count; i++)
+                s.Registered[i] = s.Registered[i] with { RegisteredAt = DateTime.Now.AddMonths(-(i % 5)).AddDays(-i), Rescued = i % 3 != 2 };
+            s.MarkUsed(new Dictionary<string, int> { ["工符"] = 18, ["XYZ設検課"] = 12, ["図締"] = 9, ["盤検"] = 4, ["高田"] = 3 }, 120, DateTime.Now);
+            using var f = new StatsForm(UsageStats.Compute(s, DateTime.Now));
+            f.Shown += (_, _) =>
+            {
+                using var bmp = new Bitmap(f.Width, f.Height);
+                f.DrawToBitmap(bmp, new Rectangle(Point.Empty, f.Size));
+                bmp.Save(pngPath, System.Drawing.Imaging.ImageFormat.Png);
+                f.Close();
+            };
+            f.ShowDialog();
+            Directory.Delete(dir, true);
+            return;
+        }
         if (Path.GetExtension(mailsPath).ToLowerInvariant() is ".csv" or ".xlsx")
         {
             // 列を選ぶ画面を保存する

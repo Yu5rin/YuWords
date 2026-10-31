@@ -212,6 +212,11 @@ sealed partial class MainForm : Form
         btnAddWord.Click += (_, _) => AddWord();
         btnHelp.Alignment = ToolStripItemAlignment.Right;
         btnHelp.DropDownItems.Add("使い方とキー操作（F1）", null, (_, _) => ShowHelp());
+        btnHelp.DropDownItems.Add("これまでの効果...", null, (_, _) =>
+        {
+            using var f = new StatsForm(UsageStats.Compute(store, DateTime.Now));
+            f.ShowDialog(this);
+        });
         btnHelp.DropDownItems.Add("環境チェック...", null, async (_, _) => await RunDiagnosticsAsync());
         btnHelp.DropDownItems.Add("更新を確認...", null, async (_, _) => await CheckForUpdatesAsync(manual: true));
         btnHelp.DropDownItems.Add("ファイルから更新...", null, async (_, _) => await UpdateFromFileAsync());
@@ -336,6 +341,11 @@ sealed partial class MainForm : Form
         grid.BackgroundColor = SystemColors.Window;
         grid.BorderStyle = BorderStyle.None;
         grid.EditMode = DataGridViewEditMode.EditOnKeystrokeOrF2;
+        // 一覧の上では日本語入力を使わない（1・2・3・4 や R のキーが IME に取られないように）。セルを編集するときだけ使う
+        grid.ImeMode = ImeMode.Disable;
+        grid.EditingControlShowing += (_, e) => e.Control.ImeMode = ImeMode.On;
+        grid.AccessibleName = "候補の一覧";
+        grid.AccessibleDescription = "1 で登録、2 で登録しない、3 で保留、4 で除外し、次の未確認の語へ進みます。R でよみを直します";
         grid.ShowCellToolTips = true;
 
         void Add(DataGridViewColumn c, Col id, string header, int width, bool readOnly = true)

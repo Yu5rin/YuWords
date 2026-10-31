@@ -7,7 +7,11 @@ namespace YuWords.Core;
 public static class WordUsage
 {
     /// <summary>文書の中に出てきた語（words のうち）。語は表記の正規化（全角英数→半角など）をそろえて探す</summary>
-    public static HashSet<string> Find(IEnumerable<IEnumerable<string>> docs, IEnumerable<string> words, CancellationToken ct = default)
+    public static HashSet<string> Find(IEnumerable<IEnumerable<string>> docs, IEnumerable<string> words, CancellationToken ct = default) =>
+        Count(docs, words, ct).Keys.ToHashSet();
+
+    /// <summary>語ごとに、その語が出てきた文書の数（1通に何回出ても 1）。出てこなかった語は入らない</summary>
+    public static Dictionary<string, int> Count(IEnumerable<IEnumerable<string>> docs, IEnumerable<string> words, CancellationToken ct = default)
     {
         // 先頭の1文字ごとに語をまとめ、文章を1回なめるだけで探す（語が多くても速い）
         var byFirst = new Dictionary<char, List<(string Original, string Key)>>();
@@ -18,12 +22,13 @@ public static class WordUsage
             if (!byFirst.TryGetValue(key[0], out var list)) byFirst[key[0]] = list = [];
             list.Add((w, key));
         }
-        var found = new HashSet<string>();
-        if (byFirst.Count == 0) return found;
-        int remaining = byFirst.Values.Sum(l => l.Count);
+        var counts = new Dictionary<string, int>();
+        if (byFirst.Count == 0) return counts;
+        var inDoc = new HashSet<string>();
         foreach (var doc in docs)
         {
             ct.ThrowIfCancellationRequested();
+            inDoc.Clear();
             foreach (var line in doc)
             {
                 var text = MailPreprocessor.Normalize(line).AsSpan();
@@ -31,19 +36,13 @@ public static class WordUsage
                 {
                     if (!byFirst.TryGetValue(text[i], out var list)) continue;
                     var rest = text[i..];
-                    for (int k = list.Count - 1; k >= 0; k--)
-                    {
-                        if (!rest.StartsWith(list[k].Key, StringComparison.Ordinal)) continue;
-                        found.Add(list[k].Original);
-                        list.RemoveAt(k);   // 見つかった語はもう探さない
-                        remaining--;
-                    }
-                    if (list.Count == 0) byFirst.Remove(text[i]);
-                    if (remaining == 0) return found;
+                    foreach (var (original, key) in list)
+                        if (rest.StartsWith(key, StringComparison.Ordinal)) inDoc.Add(original);
                 }
             }
+            foreach (var w in inDoc) counts[w] = counts.GetValueOrDefault(w) + 1;
         }
-        return found;
+        return counts;
     }
 
     /// <summary>

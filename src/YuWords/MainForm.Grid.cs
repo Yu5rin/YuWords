@@ -145,6 +145,72 @@ sealed partial class MainForm
             Undo();
             e.Handled = true;
         }
+        else if (e.Modifiers == Keys.None && !grid.IsCurrentCellInEditMode && QuickKey(e.KeyCode) is { } decision)
+        {
+            // 1 キーで決めて次の未確認の語へ（文字を打ったときのセルの編集は始めない）
+            e.Handled = e.SuppressKeyPress = true;
+            Decide(decision);
+        }
+        else if (e.KeyCode == Keys.R && e.Modifiers == Keys.None && !grid.IsCurrentCellInEditMode && grid.CurrentCell is { } cell)
+        {
+            // R でよみを直す
+            e.Handled = e.SuppressKeyPress = true;
+            grid.CurrentCell = grid[(int)Col.Reading, cell.RowIndex];
+            grid.BeginEdit(true);
+        }
+    }
+
+    enum Decision { Register, Skip, Hold, Exclude }
+
+    static Decision? QuickKey(Keys k) => k switch
+    {
+        Keys.D1 or Keys.NumPad1 => Decision.Register,
+        Keys.D2 or Keys.NumPad2 => Decision.Skip,
+        Keys.D3 or Keys.NumPad3 => Decision.Hold,
+        Keys.D4 or Keys.NumPad4 => Decision.Exclude,
+        _ => null,
+    };
+
+    /// <summary>
+    /// 選んだ行を 1 キーで決めて（登録する・しない・保留・除外）、次の未確認の行へ進む。
+    /// 何百語もある一覧を、マウスを使わずに上から順に片付けるため
+    /// </summary>
+    void Decide(Decision d)
+    {
+        if (cts != null || grid.CurrentCell is not { } cell || cell.RowIndex < 0 || cell.RowIndex >= view.Count) return;
+        var targets = SelectedItems();
+        if (targets.Count == 0) return;
+        int column = cell.ColumnIndex, row = cell.RowIndex;
+        var done = targets.ToHashSet();
+        // 決める前に、次に見る行（今の行より下で、まだ確認していない語）を覚えておく。除外・保留で一覧から消えても追える
+        var next = view.Skip(row + 1).FirstOrDefault(i => !done.Contains(i) && !i.Reviewed && !i.IsRegistered && !i.Held);
+        switch (d)
+        {
+            case Decision.Register:
+                if (targets.All(i => i.Reading.Length == 0))
+                {
+                    SetStatus("よみが無いので登録できません。R キーでよみを入れてください。");
+                    return;
+                }
+                SetRegister(true);
+                break;
+            case Decision.Skip: SetRegister(false); break;
+            case Decision.Hold: SetHeld(true); break;
+            case Decision.Exclude: ExcludeSelected(); break;
+        }
+        int remaining = all.Count(i => !i.Reviewed && !i.IsRegistered && !i.Held);
+        int to = next != null ? view.IndexOf(next) : -1;
+        if (to < 0)
+        {
+            SetStatus(remaining == 0 ? "すべての語を確かめました。下の「IME に登録」で登録できます。"
+                                     : $"この下に未確認の語はありません（残り {remaining} 語。上にあります）。");
+            return;
+        }
+        grid.ClearSelection();
+        grid.CurrentCell = grid[column, to];
+        grid.CurrentCell.Selected = true;
+        if (d is Decision.Register or Decision.Skip)
+            SetStatus($"「{targets[0].Word}」を{(d == Decision.Register ? "登録する" : "登録しない")}にしました。残り {remaining} 語（1 登録 / 2 しない / 3 保留 / 4 除外 / R よみ / Ctrl+Z 戻す）");
     }
 
     List<ReviewItem> SelectedItems() =>

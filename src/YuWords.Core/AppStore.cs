@@ -84,6 +84,14 @@ public sealed class AppSettings
     public string LastFolder { get; set; } = "";
 }
 
+/// <summary>前回読み込んだ送信メールでの、登録済みの語の使われ方（recent_use.json。語と通数だけで本文は残さない）</summary>
+public sealed class RecentUse
+{
+    public Dictionary<string, int> Counts { get; set; } = [];
+    public int Documents { get; set; }
+    public DateTime? At { get; set; }
+}
+
 /// <summary>保留にした語1つ分（held.json）。選んだよみ・品詞を残しておく</summary>
 public sealed record HeldWord(string Word, ReviewItem.State State, DateTime HeldAt);
 
@@ -106,7 +114,8 @@ public sealed class UiState
 
 /// <summary>登録済みの語1つ分（registered.json）</summary>
 /// <param name="Target">登録先。MSIME（Microsoft IME。既定）か Google（Google 日本語入力に書き出した語）</param>
-public sealed record RegisteredWord(string Word, string Reading, string Pos, DateTime RegisteredAt, string Target = "MSIME");
+/// <param name="Rescued">登録する前は IME で変換できなかった語か（効果の見える化に使う。v0.9.0 より前に登録した語は false）</param>
+public sealed record RegisteredWord(string Word, string Reading, string Pos, DateTime RegisteredAt, string Target = "MSIME", bool Rescued = false);
 
 /// <summary>
 /// %APPDATA%\YuWords\ の永続データ。
@@ -139,10 +148,19 @@ public sealed class AppStore
     public Dictionary<string, DateTime> LastUsed { get; private set; } = [];
 
     /// <summary>文章を調べた結果を残す（見かけた語の日時と、調べた日時）</summary>
-    public void MarkUsed(IEnumerable<string> words, DateTime when)
+    public void MarkUsed(IEnumerable<string> words, DateTime when) =>
+        MarkUsed(words.Distinct().ToDictionary(w => w, _ => 1), 0, when);
+
+    /// <summary>文章を調べた結果を残す（語ごとの出たメールの数・調べた通数も）</summary>
+    public void MarkUsed(IReadOnlyDictionary<string, int> counts, int documents, DateTime when)
     {
-        foreach (var w in words) LastUsed[w] = when;
+        foreach (var w in counts.Keys) LastUsed[w] = when;
         Save(LastUsedPath, LastUsed);
+        if (documents > 0)
+        {
+            RecentUse = new RecentUse { Counts = counts.ToDictionary(kv => kv.Key, kv => kv.Value), Documents = documents, At = when };
+            Save(RecentUsePath, RecentUse);
+        }
         Settings.LastUsageScan = when;
         SaveSettings();
     }
@@ -234,6 +252,7 @@ public sealed class AppStore
         Learned = Load<Dictionary<string, string>>(LearnedPath) ?? [];
         TeamSeen = (Load<List<string>>(TeamSeenPath) ?? []).ToHashSet();
         LastUsed = Load<Dictionary<string, DateTime>>(LastUsedPath) ?? [];
+        RecentUse = Load<RecentUse>(RecentUsePath) ?? new();
     }
 
     static T? Load<T>(string path) where T : class
@@ -358,6 +377,23 @@ public sealed class AppStore
         Save(RegisteredPath, Registered);
         TryWriteBackup();
     }
+
+    /// <summary>登録する前は IME で変換できなかった語に印を付ける（語句が同じ行すべて）</summary>
+    public void MarkRescued(IEnumerable<string> words)
+    {
+        var set = words.ToHashSet();
+        if (set.Count == 0) return;
+        bool changed = false;
+        for (int i = 0; i < Registered.Count; i++)
+            if (!Registered[i].Rescued && set.Contains(Registered[i].Word))
+                (Registered[i], changed) = (Registered[i] with { Rescued = true }, true);
+        if (changed) Save(RegisteredPath, Registered);
+    }
+
+    string RecentUsePath => Path.Combine(Dir, "recent_use.json");
+
+    /// <summary>前回読み込んだ送信メールで、登録済みの語が出たメールの数（語句 → 通数）と、読み込んだ通数</summary>
+    public RecentUse RecentUse { get; private set; } = new();
 
     /// <summary>持ち出し用辞書を今の登録済みの語で書き直す（引っ越しのあとなど）</summary>
     public void RefreshBackup() => TryWriteBackup();
